@@ -13,5 +13,5 @@ jobs:
       - uses: alex-page/github-project-automation-plus
         with:
           project: "adapt-authoring: The TODO Board"
-          column: Assigned
+          column: "Assigned"
           repo-token: ${{ secrets.PROJECTS_SECRET }}

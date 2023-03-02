@@ -3,7 +3,7 @@ name: Move unassigned issues
 on:
   issues:
     types:
-      - assigned
+      - unassigned
 
 jobs:
   move-to-assigned:

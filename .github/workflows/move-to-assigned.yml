@@ -1,4 +1,4 @@
-name: Add to main project
+name: Move assigned issues
 
 on:
   issues:

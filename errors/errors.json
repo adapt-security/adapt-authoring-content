@@ -14,5 +14,26 @@
     },
     "description": "Failed to determine schema name",
     "statusCode": 500
+  },
+  "FRIENDLY_ID_MISSING": {
+    "data": {
+      "list": "List of items missing Friendly ID"
+    },
+    "description": "Course content models that do not have a Friendly ID",
+    "statusCode": 500
+  },
+  "FRIENDLY_ID_DUPLICATE": {
+    "data": {
+      "list": "List of duplicated Friendly IDs"
+    },
+    "description": "Friendly IDs that have been duplicated",
+    "statusCode": 500
+  },
+  "PEER_STRUCTURE": {
+    "data": {
+      "data": "Details of peerless/extraneous data"
+    },
+    "description": "Problem with peer structure for multilingual course",
+    "statusCode": 500
   }
 }

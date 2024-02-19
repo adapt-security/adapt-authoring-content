@@ -8,9 +8,13 @@
   "main": "index.js",
   "repository": "github:adapt-security/adapt-authoring-content",
   "peerDependencies": {
+    "adapt-authoring-authored": "github:adapt-security/adapt-authoring-authored",
     "adapt-authoring-api": "github:adapt-security/adapt-authoring-api",
     "adapt-authoring-contentplugin": "github:adapt-security/adapt-authoring-contentplugin",
-    "adapt-authoring-core": "github:adapt-security/adapt-authoring-core"
+    "adapt-authoring-jsonschema": "github:adapt-security/adapt-authoring-jsonschema",
+    "adapt-authoring-mongodb": "github:adapt-security/adapt-authoring-mongodb",
+    "adapt-authoring-server": "github:adapt-security/adapt-authoring-server",
+    "adapt-authoring-tags": "github:adapt-security/adapt-authoring-tags"
   },
   "devDependencies": {
     "eslint": "^8.36.0",

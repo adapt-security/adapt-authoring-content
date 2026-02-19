@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "defaultPageSize": {
+      "description": "Default size of page",
+      "type": "number",
+      "default": 500
+    },
+    "maxPageSize": {
+      "description": "Maximum page size",
+      "type": "number",
+      "default": 500
+    }
+  }
+}

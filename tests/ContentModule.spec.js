@@ -1682,17 +1682,10 @@ describe('ContentModule', () => {
   })
 
   // -----------------------------------------------------------------------
-  // TODO: Potential bugs
+  // Bug fixes
   // -----------------------------------------------------------------------
-  describe('potential bugs', () => {
-    it('TODO: clone of course crashes if no config exists for the course', async () => {
-      // BUG: In clone() line 263, when cloning a course:
-      //   const [config] = await this.find({ _type: 'config', _courseId: originalDoc._courseId })
-      //   await this.clone(userId, config._id, ...)
-      // If no config exists for the course, config is undefined, and
-      // config._id throws TypeError: Cannot read properties of undefined
-      //
-      // The code should check whether config exists before trying to clone it.
+  describe('bug fixes', () => {
+    it('should handle clone of course when no config exists', async () => {
       let findCallCount = 0
       const inst = createInstance({
         find: mock.fn(async () => {
@@ -1706,14 +1699,8 @@ describe('ContentModule', () => {
         postCloneHook: createMockHook()
       })
 
-      // This SHOULD work but crashes due to missing null-check on config
-      await assert.rejects(
-        () => ContentModule.prototype.clone.call(inst, 'user1', 'c1', undefined),
-        (err) => {
-          assert.match(err.message, /Cannot read properties of undefined/)
-          return true
-        }
-      )
+      const result = await ContentModule.prototype.clone.call(inst, 'user1', 'c1', undefined)
+      assert.strictEqual(result._id, 'new-c1')
     })
   })
 })

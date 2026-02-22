@@ -1,5 +1,6 @@
 import { describe, it, mock, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { getDescendants } from '../lib/utils.js'
 
 /**
  * ContentModule extends AbstractApiModule (which extends AbstractModule).
@@ -338,7 +339,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'root',
         _courseId: 'c1',
         _type: 'page'
@@ -356,7 +357,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'root',
         _courseId: 'c1',
         _type: 'page'
@@ -379,7 +380,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'root',
         _courseId: 'c1',
         _type: 'page'
@@ -401,7 +402,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'c1',
         _courseId: 'c1',
         _type: 'course'
@@ -419,7 +420,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'page1',
         _courseId: 'c1',
         _type: 'page'
@@ -445,7 +446,7 @@ describe('ContentModule', () => {
         find: mock.fn(async () => [parent, child])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, parent)
+      const result = await getDescendants(q => inst.find(q), parent)
 
       assert.equal(result.length, 1)
       assert.equal(result[0]._id, 'child1')
@@ -462,7 +463,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'root',
         _courseId: 'x',
         _type: 'page'
@@ -1607,7 +1608,7 @@ describe('ContentModule', () => {
         ])
       })
 
-      const result = await ContentModule.prototype.getDescendants.call(inst, {
+      const result = await getDescendants(q => inst.find(q), {
         _id: 'root',
         _courseId: 'c1',
         _type: 'course'

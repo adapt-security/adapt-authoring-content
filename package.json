@@ -21,23 +21,6 @@
     "adapt-authoring-mongodb": "^1.1.3",
     "adapt-authoring-tags": "^1.0.2"
   },
-  "peerDependenciesMeta": {
-    "adapt-authoring-authored": {
-      "optional": true
-    },
-    "adapt-authoring-contentplugin": {
-      "optional": true
-    },
-    "adapt-authoring-jsonschema": {
-      "optional": true
-    },
-    "adapt-authoring-mongodb": {
-      "optional": true
-    },
-    "adapt-authoring-tags": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@semantic-release/git": "^10.0.1",
     "conventional-changelog-eslint": "^6.0.0",

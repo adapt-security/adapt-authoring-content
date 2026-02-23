@@ -234,9 +234,8 @@ describe('ContentModule', () => {
 
     it('should look up a component plugin schema for _type "component"', async () => {
       const contentplugin = {
-        find: mock.fn(async () => [{
-          targetAttribute: '_myPlugin'
-        }])
+        find: mock.fn(async () => [{ targetAttribute: '_myPlugin' }]),
+        findOne: mock.fn(async () => ({ targetAttribute: '_myPlugin' }))
       }
       const getSchemaName = ContentModule.prototype.getSchemaName.bind({
         ...inst,
@@ -256,7 +255,8 @@ describe('ContentModule', () => {
 
     it('should fall back to default if component plugin is not found', async () => {
       const contentplugin = {
-        find: mock.fn(async () => [])
+        find: mock.fn(async () => []),
+        findOne: mock.fn(async () => undefined)
       }
       const getSchemaName = ContentModule.prototype.getSchemaName.bind({
         ...inst,

@@ -6,6 +6,14 @@
     "description": "Specified item is not a valid content item Invalid parent itemparent",
     "statusCode": 500
   },
+  "DUPL_FRIENDLY_ID": {
+    "data": {
+      "_friendlyId": "The duplicate friendly ID",
+      "_courseId": "The course ID"
+    },
+    "description": "A content item with this _friendlyId already exists in this course",
+    "statusCode": 409
+  },
   "UNKNOWN_SCHEMA_NAME": {
     "data": {
       "_id": "The database _id",

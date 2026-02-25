@@ -30,7 +30,9 @@ function createMockApp () {
     errors: {
       NOT_FOUND: createMockError('NOT_FOUND'),
       INVALID_PARENT: createMockError('INVALID_PARENT'),
-      UNKNOWN_SCHEMA_NAME: createMockError('UNKNOWN_SCHEMA_NAME')
+      UNKNOWN_SCHEMA_NAME: createMockError('UNKNOWN_SCHEMA_NAME'),
+      MONGO_DUPL_INDEX: createMockError('MONGO_DUPL_INDEX'),
+      DUPL_FRIENDLY_ID: createMockError('DUPL_FRIENDLY_ID')
     },
     waitForModule: mock.fn(async () => ({})),
     config: { get: mock.fn(() => 10) }
@@ -1686,6 +1688,141 @@ describe('ContentModule', () => {
   // Bug fixes
   // -----------------------------------------------------------------------
   describe('bug fixes', () => {
+    it('insert should catch MONGO_DUPL_INDEX and throw DUPL_FRIENDLY_ID', async () => {
+      const duplError = createMockError('MONGO_DUPL_INDEX')
+      const inst = createInstance()
+      const superInsert = mock.fn(async () => { throw duplError })
+
+      const origProto = Object.getPrototypeOf(ContentModule.prototype)
+      const origInsert = origProto.insert
+      origProto.insert = superInsert
+      try {
+        await assert.rejects(
+          () => ContentModule.prototype.insert.call(inst, { _friendlyId: 'fid-1', _courseId: 'c1', _type: 'article' }),
+          (err) => {
+            assert.equal(err.code, 'DUPL_FRIENDLY_ID')
+            assert.equal(err.data._friendlyId, 'fid-1')
+            assert.equal(err.data._courseId, 'c1')
+            return true
+          }
+        )
+      } finally {
+        origProto.insert = origInsert
+      }
+    })
+
+    it('insert should re-throw non-duplicate errors unchanged', async () => {
+      const otherError = new Error('SOME_OTHER_ERROR')
+      otherError.code = 'SOME_OTHER_ERROR'
+      const inst = createInstance()
+
+      const origProto = Object.getPrototypeOf(ContentModule.prototype)
+      const origInsert = origProto.insert
+      origProto.insert = mock.fn(async () => { throw otherError })
+      try {
+        await assert.rejects(
+          () => ContentModule.prototype.insert.call(inst, { _type: 'article' }),
+          (err) => {
+            assert.equal(err.code, 'SOME_OTHER_ERROR')
+            return true
+          }
+        )
+      } finally {
+        origProto.insert = origInsert
+      }
+    })
+
+    it('update should catch MONGO_DUPL_INDEX and throw DUPL_FRIENDLY_ID', async () => {
+      const duplError = createMockError('MONGO_DUPL_INDEX')
+      const inst = createInstance()
+
+      const origProto = Object.getPrototypeOf(ContentModule.prototype)
+      const origUpdate = origProto.update
+      origProto.update = mock.fn(async () => { throw duplError })
+      try {
+        await assert.rejects(
+          () => ContentModule.prototype.update.call(inst, { _id: 'x' }, { _friendlyId: 'fid-1', _courseId: 'c1' }),
+          (err) => {
+            assert.equal(err.code, 'DUPL_FRIENDLY_ID')
+            assert.equal(err.data._friendlyId, 'fid-1')
+            assert.equal(err.data._courseId, 'c1')
+            return true
+          }
+        )
+      } finally {
+        origProto.update = origUpdate
+      }
+    })
+
+    it('update should re-throw non-duplicate errors unchanged', async () => {
+      const otherError = new Error('SOME_OTHER_ERROR')
+      otherError.code = 'SOME_OTHER_ERROR'
+      const inst = createInstance()
+
+      const origProto = Object.getPrototypeOf(ContentModule.prototype)
+      const origUpdate = origProto.update
+      origProto.update = mock.fn(async () => { throw otherError })
+      try {
+        await assert.rejects(
+          () => ContentModule.prototype.update.call(inst, { _id: 'x' }, { title: 'Updated' }),
+          (err) => {
+            assert.equal(err.code, 'SOME_OTHER_ERROR')
+            return true
+          }
+        )
+      } finally {
+        origProto.update = origUpdate
+      }
+    })
+
+    it('clone should clear _friendlyId for non-course types', async () => {
+      let findCallCount = 0
+      const insertFn = mock.fn(async (data, opts) => ({
+        ...data,
+        _id: 'new-id'
+      }))
+      const inst = createInstance({
+        find: mock.fn(async () => {
+          findCallCount++
+          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1', _friendlyId: 'art-1' }]
+          if (findCallCount === 2) return [{ _id: 'p', _type: 'page', _courseId: 'c1' }]
+          return []
+        }),
+        insert: insertFn,
+        preCloneHook: createMockHook(),
+        postCloneHook: createMockHook()
+      })
+
+      await ContentModule.prototype.clone.call(inst, 'user1', 'orig', 'p')
+
+      const payload = insertFn.mock.calls[0].arguments[0]
+      assert.equal(payload._friendlyId, undefined)
+    })
+
+    it('clone should preserve _friendlyId for course types', async () => {
+      let findCallCount = 0
+      const insertFn = mock.fn(async (data, opts) => ({
+        ...data,
+        _id: 'new-course-id'
+      }))
+      const inst = createInstance({
+        find: mock.fn(async () => {
+          findCallCount++
+          if (findCallCount === 1) return [{ _id: 'c1', _type: 'course', _courseId: 'c1', _friendlyId: 'course-1' }]
+          return []
+        }),
+        insert: insertFn,
+        update: mock.fn(async () => ({})),
+        preCloneHook: createMockHook(),
+        postCloneHook: createMockHook()
+      })
+
+      await ContentModule.prototype.clone.call(inst, 'user1', 'c1', undefined)
+
+      const payload = insertFn.mock.calls[0].arguments[0]
+      assert.equal(payload._friendlyId, 'course-1')
+    })
+
     it('should handle clone of course when no config exists', async () => {
       let findCallCount = 0
       const inst = createInstance({

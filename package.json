@@ -22,6 +22,7 @@
     "adapt-authoring-tags": "^1.0.2"
   },
   "devDependencies": {
+    "adapt-authoring-server": "^2.1.0",
     "@semantic-release/git": "^10.0.1",
     "conventional-changelog-eslint": "^6.0.0",
     "semantic-release": "^25.0.2",

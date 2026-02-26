@@ -11,7 +11,7 @@
     "test": "node --test 'tests/**/*.spec.js'"
   },
   "dependencies": {
-    "adapt-authoring-api": "^2.0.0",
+    "adapt-authoring-api": "^3.0.0",
     "adapt-authoring-core": "^2.0.0"
   },
   "peerDependencies": {
@@ -22,6 +22,7 @@
     "adapt-authoring-tags": "^1.0.2"
   },
   "devDependencies": {
+    "adapt-authoring-server": "^2.1.0",
     "@semantic-release/git": "^10.0.1",
     "conventional-changelog-eslint": "^6.0.0",
     "semantic-release": "^25.0.2",

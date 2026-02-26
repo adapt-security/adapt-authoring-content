@@ -1,0 +1,15 @@
+{
+  "root": "content",
+  "routes": [
+    {
+      "route": "/insertrecursive",
+      "handlers": { "post": "handleInsertRecursive" },
+      "permissions": { "post": ["write:{scope}"] }
+    },
+    {
+      "route": "/clone",
+      "handlers": { "post": "handleClone" },
+      "permissions": { "post": ["write:{scope}"] }
+    }
+  ]
+}

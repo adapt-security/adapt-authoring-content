@@ -97,47 +97,12 @@ describe('ContentModule', () => {
   // setValues
   // -----------------------------------------------------------------------
   describe('setValues', () => {
-    it('should set root, collectionName and schemaName to "content"', async () => {
+    it('should set collectionName and schemaName to "content"', async () => {
       const inst = createInstance()
       await ContentModule.prototype.setValues.call(inst)
 
-      assert.equal(inst.root, 'content')
       assert.equal(inst.collectionName, 'content')
       assert.equal(inst.schemaName, 'content')
-    })
-
-    it('should call useDefaultRouteConfig', async () => {
-      const inst = createInstance()
-      await ContentModule.prototype.setValues.call(inst)
-
-      assert.equal(inst.useDefaultRouteConfig.mock.callCount(), 1)
-    })
-
-    it('should push insertrecursive and clone routes', async () => {
-      const inst = createInstance()
-      await ContentModule.prototype.setValues.call(inst)
-
-      assert.equal(inst.routes.length, 2)
-      assert.equal(inst.routes[0].route, '/insertrecursive')
-      assert.equal(inst.routes[1].route, '/clone')
-    })
-
-    it('should assign correct HTTP methods for insertrecursive route', async () => {
-      const inst = createInstance()
-      await ContentModule.prototype.setValues.call(inst)
-
-      const route = inst.routes[0]
-      assert.ok(route.handlers.post)
-      assert.deepEqual(route.permissions, { post: ['write:content'] })
-    })
-
-    it('should assign correct HTTP methods for clone route', async () => {
-      const inst = createInstance()
-      await ContentModule.prototype.setValues.call(inst)
-
-      const route = inst.routes[1]
-      assert.ok(route.handlers.post)
-      assert.deepEqual(route.permissions, { post: ['write:content'] })
     })
   })
 

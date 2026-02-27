@@ -1,4 +1,4 @@
-name: Standard.js formatting check
+name: Lint
 on: push
 jobs:
   default:
@@ -10,3 +10,4 @@ jobs:
           node-version: 'lts/*'
       - run: npm install
       - run: npx standard
+

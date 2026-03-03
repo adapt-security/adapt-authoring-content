@@ -73,6 +73,7 @@ function createInstance (overrides = {}) {
     checkAccess: mock.fn(async (req, data) => data),
     log: mock.fn(),
 
+    requestHook: createMockHook(),
     preCloneHook: createMockHook(),
     postCloneHook: createMockHook(),
 
@@ -906,9 +907,10 @@ describe('ContentModule', () => {
       assert.equal(next.mock.calls[0].arguments[0], error)
     })
 
-    it('should call checkAccess before cloning', async () => {
+    it('should call requestHook, checkAccess, then clone in order', async () => {
       const callOrder = []
       const inst = createInstance()
+      inst.requestHook = { invoke: mock.fn(async () => { callOrder.push('requestHook') }) }
       inst.findOne = mock.fn(async () => {
         callOrder.push('findOne')
         return { _id: 'orig' }
@@ -931,7 +933,7 @@ describe('ContentModule', () => {
 
       await ContentModule.prototype.handleClone.call(inst, req, res, mock.fn())
 
-      assert.deepEqual(callOrder, ['findOne', 'checkAccess', 'clone'])
+      assert.deepEqual(callOrder, ['requestHook', 'findOne', 'checkAccess', 'clone'])
     })
   })
 

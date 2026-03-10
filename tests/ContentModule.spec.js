@@ -14,6 +14,7 @@ function createInstance (overrides = {}) {
     authored: { schemaName: 'authored' },
     tags: { schemaExtensionName: 'tags' },
     find: mock.fn(async () => []),
+    findOne: mock.fn(async () => null),
     ...overrides
   }
 }
@@ -66,9 +67,9 @@ describe('ContentModule', () => {
     })
 
     it('should look up _type from DB when _id present but _type missing', async () => {
-      const findMock = mock.fn(async () => [{ _type: 'article' }])
-      assert.equal(await bind({ find: findMock })({ _id: 'some-id' }), 'article')
-      assert.equal(findMock.mock.callCount(), 1)
+      const findOneMock = mock.fn(async () => ({ _type: 'article' }))
+      assert.equal(await bind({ findOne: findOneMock })({ _id: 'some-id' }), 'article')
+      assert.equal(findOneMock.mock.callCount(), 1)
     })
   })
 

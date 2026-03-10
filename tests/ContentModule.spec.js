@@ -1,6 +1,5 @@
 import { describe, it, mock, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { getDescendants } from '../lib/utils.js'
 
 /**
  * ContentModule extends AbstractApiModule (which extends AbstractModule).
@@ -70,6 +69,8 @@ function createInstance (overrides = {}) {
 
     setDefaultOptions: mock.fn((opts) => opts),
     checkAccess: mock.fn(async (req, data) => data),
+    updateSortOrder: mock.fn(async () => {}),
+    updateEnabledPlugins: mock.fn(async () => {}),
     log: mock.fn(),
 
     requestHook: createMockHook(),
@@ -296,324 +297,146 @@ describe('ContentModule', () => {
   })
 
   // -----------------------------------------------------------------------
-  // getDescendants
-  // -----------------------------------------------------------------------
-  describe('getDescendants', () => {
-    it('should return empty array when root item has no children', async () => {
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'root', _courseId: 'c1', _type: 'page' }
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'root',
-        _courseId: 'c1',
-        _type: 'page'
-      })
-
-      assert.deepEqual(result, [])
-    })
-
-    it('should return direct children', async () => {
-      const child1 = { _id: 'child1', _parentId: 'root', _courseId: 'c1', _type: 'article' }
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'root', _courseId: 'c1', _type: 'page' },
-          child1
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'root',
-        _courseId: 'c1',
-        _type: 'page'
-      })
-
-      assert.equal(result.length, 1)
-      assert.equal(result[0]._id, 'child1')
-    })
-
-    it('should return nested descendants (depth > 1)', async () => {
-      const child1 = { _id: 'child1', _parentId: 'root', _courseId: 'c1', _type: 'article' }
-      const child2 = { _id: 'child2', _parentId: 'child1', _courseId: 'c1', _type: 'block' }
-      const child3 = { _id: 'child3', _parentId: 'child2', _courseId: 'c1', _type: 'component' }
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'root', _courseId: 'c1', _type: 'page' },
-          child1,
-          child2,
-          child3
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'root',
-        _courseId: 'c1',
-        _type: 'page'
-      })
-
-      assert.equal(result.length, 3)
-      const ids = result.map(r => r._id)
-      assert.ok(ids.includes('child1'))
-      assert.ok(ids.includes('child2'))
-      assert.ok(ids.includes('child3'))
-    })
-
-    it('should include config item for course type roots', async () => {
-      const config = { _id: 'config1', _courseId: 'c1', _type: 'config' }
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'c1', _courseId: 'c1', _type: 'course' },
-          config
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'c1',
-        _courseId: 'c1',
-        _type: 'course'
-      })
-
-      assert.ok(result.some(r => r._type === 'config'))
-    })
-
-    it('should NOT include config for non-course roots', async () => {
-      const config = { _id: 'config1', _courseId: 'c1', _type: 'config' }
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'page1', _courseId: 'c1', _type: 'page' },
-          config
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'page1',
-        _courseId: 'c1',
-        _type: 'page'
-      })
-
-      assert.ok(!result.some(r => r._type === 'config'))
-    })
-
-    it('should handle _parentId comparison with toString()', async () => {
-      const parent = {
-        _id: 'root',
-        _courseId: 'c1',
-        _type: 'page',
-        toString () { return 'root' }
-      }
-      const child = {
-        _id: 'child1',
-        _parentId: { toString () { return 'root' } },
-        _courseId: 'c1',
-        _type: 'article'
-      }
-      const inst = createInstance({
-        find: mock.fn(async () => [parent, child])
-      })
-
-      const result = await getDescendants(q => inst.find(q), parent)
-
-      assert.equal(result.length, 1)
-      assert.equal(result[0]._id, 'child1')
-    })
-
-    it('should handle multiple children at the same level', async () => {
-      const child1 = { _id: 'c1', _parentId: 'root', _courseId: 'x', _type: 'article' }
-      const child2 = { _id: 'c2', _parentId: 'root', _courseId: 'x', _type: 'article' }
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'root', _courseId: 'x', _type: 'page' },
-          child1,
-          child2
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'root',
-        _courseId: 'x',
-        _type: 'page'
-      })
-
-      assert.equal(result.length, 2)
-    })
-  })
-
-  // -----------------------------------------------------------------------
-  // insert (logic tests using simulated method body)
+  // insert
   // -----------------------------------------------------------------------
   describe('insert', () => {
+    const origProto = Object.getPrototypeOf(ContentModule.prototype)
+    let origInsert
+
+    beforeEach(() => {
+      origInsert = origProto.insert
+    })
+
+    // Restore after each test in case of early failure
     it('should call super.insert and return result for non-course types', async () => {
-      const superInsert = mock.fn(async (data) => ({
-        ...data,
-        _id: 'new-id'
-      }))
-      const updateSortOrder = mock.fn(async () => {})
-      const updateEnabledPlugins = mock.fn(async () => {})
-
-      const insertFn = async (data, options = {}) => {
-        const doc = await superInsert(data, options)
-        if (doc._type === 'course') {
-          return doc
-        }
-        await Promise.all([
-          options.updateSortOrder !== false && updateSortOrder(doc, data),
-          options.updateEnabledPlugins !== false && updateEnabledPlugins(doc)
-        ])
-        return doc
+      const superInsert = mock.fn(async (data) => ({ ...data, _id: 'new-id' }))
+      origProto.insert = superInsert
+      try {
+        const inst = createInstance()
+        const result = await ContentModule.prototype.insert.call(inst, { _type: 'article', title: 'Test' })
+        assert.equal(result._type, 'article')
+        assert.equal(superInsert.mock.callCount(), 1)
+        assert.equal(inst.updateSortOrder.mock.callCount(), 1)
+        assert.equal(inst.updateEnabledPlugins.mock.callCount(), 1)
+      } finally {
+        origProto.insert = origInsert
       }
-
-      const result = await insertFn({ _type: 'article', title: 'Test' })
-      assert.equal(result._type, 'article')
-      assert.equal(superInsert.mock.callCount(), 1)
-      assert.equal(updateSortOrder.mock.callCount(), 1)
-      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
     })
 
     it('should update _courseId after inserting a course', async () => {
-      const updateFn = mock.fn(async (q, d) => ({ ...q, ...d }))
-      const superInsert = mock.fn(async (data) => ({
-        ...data,
-        _id: 'course-1'
-      }))
-
-      const insertFn = async (data) => {
-        const doc = await superInsert(data)
-        if (doc._type === 'course') {
-          return updateFn({ _id: doc._id }, { _courseId: doc._id.toString() })
-        }
-        return doc
+      const superInsert = mock.fn(async (data) => ({ ...data, _id: 'course-1' }))
+      origProto.insert = superInsert
+      try {
+        const inst = createInstance()
+        await ContentModule.prototype.insert.call(inst, { _type: 'course', title: 'My Course' })
+        assert.equal(inst.update.mock.callCount(), 1)
+        assert.equal(inst.update.mock.calls[0].arguments[1]._courseId, 'course-1')
+      } finally {
+        origProto.insert = origInsert
       }
-
-      await insertFn({ _type: 'course', title: 'My Course' })
-      assert.equal(updateFn.mock.callCount(), 1)
-      assert.equal(
-        updateFn.mock.calls[0].arguments[1]._courseId,
-        'course-1'
-      )
     })
 
     it('should skip updateSortOrder when options.updateSortOrder is false', async () => {
-      const updateSortOrder = mock.fn(async () => {})
-      const updateEnabledPlugins = mock.fn(async () => {})
       const superInsert = mock.fn(async (data) => ({ ...data, _id: 'id' }))
-
-      const insertFn = async (data, options = {}) => {
-        const doc = await superInsert(data)
-        if (doc._type === 'course') return doc
-        await Promise.all([
-          options.updateSortOrder !== false && updateSortOrder(doc, data),
-          options.updateEnabledPlugins !== false && updateEnabledPlugins(doc)
-        ])
-        return doc
+      origProto.insert = superInsert
+      try {
+        const inst = createInstance()
+        await ContentModule.prototype.insert.call(inst, { _type: 'block' }, { updateSortOrder: false })
+        assert.equal(inst.updateSortOrder.mock.callCount(), 0)
+        assert.equal(inst.updateEnabledPlugins.mock.callCount(), 1)
+      } finally {
+        origProto.insert = origInsert
       }
-
-      await insertFn({ _type: 'block' }, { updateSortOrder: false })
-      assert.equal(updateSortOrder.mock.callCount(), 0)
-      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
     })
 
     it('should skip updateEnabledPlugins when options.updateEnabledPlugins is false', async () => {
-      const updateSortOrder = mock.fn(async () => {})
-      const updateEnabledPlugins = mock.fn(async () => {})
       const superInsert = mock.fn(async (data) => ({ ...data, _id: 'id' }))
-
-      const insertFn = async (data, options = {}) => {
-        const doc = await superInsert(data)
-        if (doc._type === 'course') return doc
-        await Promise.all([
-          options.updateSortOrder !== false && updateSortOrder(doc, data),
-          options.updateEnabledPlugins !== false && updateEnabledPlugins(doc)
-        ])
-        return doc
+      origProto.insert = superInsert
+      try {
+        const inst = createInstance()
+        await ContentModule.prototype.insert.call(inst, { _type: 'block' }, { updateEnabledPlugins: false })
+        assert.equal(inst.updateSortOrder.mock.callCount(), 1)
+        assert.equal(inst.updateEnabledPlugins.mock.callCount(), 0)
+      } finally {
+        origProto.insert = origInsert
       }
-
-      await insertFn({ _type: 'block' }, { updateEnabledPlugins: false })
-      assert.equal(updateSortOrder.mock.callCount(), 1)
-      assert.equal(updateEnabledPlugins.mock.callCount(), 0)
     })
   })
 
   // -----------------------------------------------------------------------
-  // update (logic tests using simulated method body)
+  // update
   // -----------------------------------------------------------------------
   describe('update', () => {
+    const origProto = Object.getPrototypeOf(ContentModule.prototype)
+    let origUpdate
+
+    beforeEach(() => {
+      origUpdate = origProto.update
+    })
+
     it('should call super.update then updateSortOrder and updateEnabledPlugins', async () => {
-      const superUpdate = mock.fn(async () => ({
-        _id: 'id1',
-        _type: 'article',
-        _parentId: 'p1',
-        _courseId: 'c1'
-      }))
-      const updateSortOrder = mock.fn(async () => {})
-      const updateEnabledPlugins = mock.fn(async () => {})
-
-      const updateFn = async (query, data) => {
-        const doc = await superUpdate(query, data)
-        await Promise.all([
-          updateSortOrder(doc, data),
-          updateEnabledPlugins(doc, data._enabledPlugins ? { forceUpdate: true } : {})
-        ])
-        return doc
+      const superUpdate = mock.fn(async () => ({ _id: 'id1', _type: 'article', _parentId: 'p1', _courseId: 'c1' }))
+      origProto.update = superUpdate
+      try {
+        const inst = createInstance()
+        const result = await ContentModule.prototype.update.call(inst, { _id: 'id1' }, { title: 'Updated' })
+        assert.equal(result._id, 'id1')
+        assert.equal(superUpdate.mock.callCount(), 1)
+        assert.equal(inst.updateSortOrder.mock.callCount(), 1)
+        assert.equal(inst.updateEnabledPlugins.mock.callCount(), 1)
+      } finally {
+        origProto.update = origUpdate
       }
-
-      const result = await updateFn({ _id: 'id1' }, { title: 'Updated' })
-      assert.equal(result._id, 'id1')
-      assert.equal(superUpdate.mock.callCount(), 1)
-      assert.equal(updateSortOrder.mock.callCount(), 1)
-      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
     })
 
     it('should pass forceUpdate when _enabledPlugins is present in data', async () => {
       const superUpdate = mock.fn(async () => ({ _id: 'id', _courseId: 'c1' }))
-      const updateEnabledPlugins = mock.fn(async () => {})
-
-      const updateFn = async (query, data) => {
-        const doc = await superUpdate(query, data)
-        await updateEnabledPlugins(doc, data._enabledPlugins ? { forceUpdate: true } : {})
-        return doc
+      origProto.update = superUpdate
+      try {
+        const inst = createInstance()
+        await ContentModule.prototype.update.call(inst, { _id: 'id' }, { _enabledPlugins: ['plugin-a'] })
+        const args = inst.updateEnabledPlugins.mock.calls[0].arguments
+        assert.deepEqual(args[1], { forceUpdate: true })
+      } finally {
+        origProto.update = origUpdate
       }
-
-      await updateFn({ _id: 'id' }, { _enabledPlugins: ['plugin-a'] })
-      const args = updateEnabledPlugins.mock.calls[0].arguments
-      assert.deepEqual(args[1], { forceUpdate: true })
     })
 
     it('should pass empty options when _enabledPlugins is not in data', async () => {
       const superUpdate = mock.fn(async () => ({ _id: 'id', _courseId: 'c1' }))
-      const updateEnabledPlugins = mock.fn(async () => {})
-
-      const updateFn = async (query, data) => {
-        const doc = await superUpdate(query, data)
-        await updateEnabledPlugins(doc, data._enabledPlugins ? { forceUpdate: true } : {})
-        return doc
+      origProto.update = superUpdate
+      try {
+        const inst = createInstance()
+        await ContentModule.prototype.update.call(inst, { _id: 'id' }, { title: 'Updated' })
+        const args = inst.updateEnabledPlugins.mock.calls[0].arguments
+        assert.deepEqual(args[1], {})
+      } finally {
+        origProto.update = origUpdate
       }
-
-      await updateFn({ _id: 'id' }, { title: 'Updated' })
-      const args = updateEnabledPlugins.mock.calls[0].arguments
-      assert.deepEqual(args[1], {})
     })
   })
 
   // -----------------------------------------------------------------------
-  // delete (logic tests using simulated method body)
+  // delete
   // -----------------------------------------------------------------------
   describe('delete', () => {
-    it('should throw when target document is not found', async () => {
-      const findFn = mock.fn(async () => [])
-      const errors = { NOT_FOUND: createMockError('NOT_FOUND') }
+    const origProto = Object.getPrototypeOf(ContentModule.prototype)
+    let origDelete
 
-      const deleteFn = async (query, options = {}) => {
-        const [targetDoc] = await findFn(query)
-        if (!targetDoc) {
-          throw errors.NOT_FOUND.setData({ type: options.schemaName, id: JSON.stringify(query) })
-        }
-        return targetDoc
-      }
+    beforeEach(() => {
+      origDelete = origProto.delete
+    })
+
+    it('should throw when target document is not found', async () => {
+      const inst = createInstance({
+        find: mock.fn(async () => []),
+        setDefaultOptions: mock.fn((opts) => {
+          if (opts) opts.schemaName = 'content'
+        })
+      })
 
       await assert.rejects(
-        () => deleteFn({ _id: 'missing' }),
+        () => ContentModule.prototype.delete.call(inst, { _id: 'missing' }, {}),
         (err) => {
           assert.equal(err.code, 'NOT_FOUND')
           return true
@@ -625,44 +448,139 @@ describe('ContentModule', () => {
       const targetDoc = { _id: 'target', _courseId: 'c1', _type: 'page', _parentId: 'c1' }
       const desc1 = { _id: 'desc1', _courseId: 'c1', _type: 'article', _parentId: 'target' }
       const desc2 = { _id: 'desc2', _courseId: 'c1', _type: 'block', _parentId: 'desc1' }
+      const allItems = [
+        { _id: 'c1', _courseId: 'c1', _type: 'course' },
+        targetDoc,
+        desc1,
+        desc2
+      ]
 
       const superDelete = mock.fn(async () => {})
-      const getDescendants = mock.fn(async () => [desc1, desc2])
-      const findFn = mock.fn(async () => [targetDoc])
-      const updateSortOrder = mock.fn(async () => {})
-      const updateEnabledPlugins = mock.fn(async () => {})
+      origProto.delete = superDelete
+      try {
+        const inst = createInstance({
+          find: mock.fn(async (query) => {
+            return allItems.filter(item => {
+              return Object.entries(query).every(([k, v]) => {
+                const itemVal = item[k]
+                if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                  return itemVal.toString() === v
+                }
+                return itemVal === v
+              })
+            })
+          })
+        })
 
-      const deleteFn = async (query) => {
-        const [target] = await findFn(query)
-        if (!target) throw new Error('NOT_FOUND')
-        const descendants = await getDescendants(target)
-        await Promise.all([...descendants, target].map(d => superDelete({ _id: d._id })))
-        await Promise.all([
-          updateEnabledPlugins(target),
-          updateSortOrder(target)
-        ])
-        return [target, ...descendants]
+        const result = await ContentModule.prototype.delete.call(inst, { _id: 'target' })
+        assert.equal(result.length, 3)
+        assert.equal(result[0]._id, 'target')
+        assert.equal(superDelete.mock.callCount(), 3)
+      } finally {
+        origProto.delete = origDelete
       }
-
-      const result = await deleteFn({ _id: 'target' })
-      assert.equal(result.length, 3)
-      assert.equal(result[0]._id, 'target')
-      assert.equal(superDelete.mock.callCount(), 3)
     })
 
     it('should return target as first element followed by descendants', async () => {
       const target = { _id: 't1', _courseId: 'c1', _type: 'article', _parentId: 'p1' }
       const child = { _id: 'c1child', _courseId: 'c1', _type: 'block', _parentId: 't1' }
+      const allItems = [
+        { _id: 'c1', _courseId: 'c1', _type: 'course' },
+        { _id: 'p1', _courseId: 'c1', _type: 'page', _parentId: 'c1' },
+        target,
+        child
+      ]
 
-      const deleteFn = async (query) => {
-        const [targetDoc] = [target]
-        const descendants = [child]
-        return [targetDoc, ...descendants]
+      const superDelete = mock.fn(async () => {})
+      origProto.delete = superDelete
+      try {
+        const inst = createInstance({
+          find: mock.fn(async (query) => {
+            return allItems.filter(item => {
+              return Object.entries(query).every(([k, v]) => {
+                const itemVal = item[k]
+                if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                  return itemVal.toString() === v
+                }
+                return itemVal === v
+              })
+            })
+          })
+        })
+
+        const result = await ContentModule.prototype.delete.call(inst, { _id: 't1' })
+        assert.equal(result[0]._id, 't1')
+        assert.equal(result[1]._id, 'c1child')
+      } finally {
+        origProto.delete = origDelete
       }
+    })
 
-      const result = await deleteFn({ _id: 't1' })
-      assert.equal(result[0]._id, 't1')
-      assert.equal(result[1]._id, 'c1child')
+    it('should include config when deleting a course', async () => {
+      const course = { _id: 'c1', _courseId: 'c1', _type: 'course' }
+      const config = { _id: 'cfg', _courseId: 'c1', _type: 'config' }
+      const page = { _id: 'p1', _courseId: 'c1', _type: 'page', _parentId: 'c1' }
+      const allItems = [course, config, page]
+
+      const superDelete = mock.fn(async () => {})
+      origProto.delete = superDelete
+      try {
+        const inst = createInstance({
+          find: mock.fn(async (query) => {
+            return allItems.filter(item => {
+              return Object.entries(query).every(([k, v]) => {
+                const itemVal = item[k]
+                if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                  return itemVal.toString() === v
+                }
+                return itemVal === v
+              })
+            })
+          })
+        })
+
+        const result = await ContentModule.prototype.delete.call(inst, { _id: 'c1' })
+        assert.ok(result.some(r => r._type === 'config'))
+        assert.ok(result.some(r => r._type === 'page'))
+        assert.equal(superDelete.mock.callCount(), 3)
+      } finally {
+        origProto.delete = origDelete
+      }
+    })
+
+    it('should not include config when deleting a non-course item', async () => {
+      const page = { _id: 'p1', _courseId: 'c1', _type: 'page', _parentId: 'c1' }
+      const config = { _id: 'cfg', _courseId: 'c1', _type: 'config' }
+      const article = { _id: 'a1', _courseId: 'c1', _type: 'article', _parentId: 'p1' }
+      const allItems = [
+        { _id: 'c1', _courseId: 'c1', _type: 'course' },
+        config,
+        page,
+        article
+      ]
+
+      const superDelete = mock.fn(async () => {})
+      origProto.delete = superDelete
+      try {
+        const inst = createInstance({
+          find: mock.fn(async (query) => {
+            return allItems.filter(item => {
+              return Object.entries(query).every(([k, v]) => {
+                const itemVal = item[k]
+                if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                  return itemVal.toString() === v
+                }
+                return itemVal === v
+              })
+            })
+          })
+        })
+
+        const result = await ContentModule.prototype.delete.call(inst, { _id: 'p1' })
+        assert.ok(!result.some(r => r._type === 'config'))
+      } finally {
+        origProto.delete = origDelete
+      }
     })
   })
 
@@ -905,6 +823,21 @@ describe('ContentModule', () => {
   // clone
   // -----------------------------------------------------------------------
   describe('clone', () => {
+    // Helper: creates a find mock that returns items matching query against a dataset
+    function createCloneFindMock (allItems) {
+      return mock.fn(async (query) => {
+        return allItems.filter(item => {
+          return Object.entries(query).every(([k, v]) => {
+            const itemVal = item[k]
+            if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+              return itemVal.toString() === v
+            }
+            return itemVal === v
+          })
+        })
+      })
+    }
+
     it('should throw NOT_FOUND when original document is not found', async () => {
       const inst = createInstance({
         find: mock.fn(async () => [])
@@ -920,13 +853,11 @@ describe('ContentModule', () => {
     })
 
     it('should throw INVALID_PARENT when parent not found and type is not course/config', async () => {
-      let callCount = 0
+      const allItems = [
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          callCount++
-          if (callCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          return [] // parent not found
-        })
+        find: createCloneFindMock(allItems)
       })
       inst.preCloneHook = createMockHook()
 
@@ -941,14 +872,12 @@ describe('ContentModule', () => {
 
     it('should invoke preCloneHook when invokePreHook option is not false', async () => {
       const preCloneHook = createMockHook()
-      let findCallCount = 0
+      const allItems = [
+        { _id: 'parent', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'parent' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'parent', _type: 'page', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: mock.fn(async (data) => ({ ...data, _id: 'new-id' })),
         preCloneHook,
         postCloneHook: createMockHook()
@@ -961,14 +890,12 @@ describe('ContentModule', () => {
 
     it('should skip preCloneHook when invokePreHook option is false', async () => {
       const preCloneHook = createMockHook()
-      let findCallCount = 0
+      const allItems = [
+        { _id: 'parent', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'parent' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'parent', _type: 'page', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: mock.fn(async (data) => ({ ...data, _id: 'new-id' })),
         preCloneHook,
         postCloneHook: createMockHook()
@@ -983,14 +910,12 @@ describe('ContentModule', () => {
 
     it('should skip postCloneHook when invokePostHook option is false', async () => {
       const postCloneHook = createMockHook()
-      let findCallCount = 0
+      const allItems = [
+        { _id: 'parent', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'parent' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'parent', _type: 'page', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: mock.fn(async (data) => ({ ...data, _id: 'new-id' })),
         preCloneHook: createMockHook(),
         postCloneHook
@@ -1004,18 +929,16 @@ describe('ContentModule', () => {
     })
 
     it('should use "contentobject" schema for page types', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-id'
       }))
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' },
+        { _id: 'orig', _type: 'page', _courseId: 'c1', _parentId: 'c1' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'page', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'c1', _type: 'course', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: insertFn,
         preCloneHook: createMockHook(),
         postCloneHook: createMockHook()
@@ -1028,18 +951,16 @@ describe('ContentModule', () => {
     })
 
     it('should use "contentobject" schema for menu types', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-id'
       }))
+      const allItems = [
+        { _id: 'parent', _type: 'course', _courseId: 'c1' },
+        { _id: 'orig', _type: 'menu', _courseId: 'c1', _parentId: 'parent' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'menu', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'parent', _type: 'course', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: insertFn,
         preCloneHook: createMockHook(),
         postCloneHook: createMockHook()
@@ -1052,18 +973,16 @@ describe('ContentModule', () => {
     })
 
     it('should set createdBy to the userId argument', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-id'
       }))
+      const allItems = [
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          if (findCallCount === 2) return [{ _id: 'p', _type: 'page', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: insertFn,
         preCloneHook: createMockHook(),
         postCloneHook: createMockHook()
@@ -1076,25 +995,16 @@ describe('ContentModule', () => {
     })
 
     it('should clear _id and _trackingId from cloned payload', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-id'
       }))
+      const allItems = [
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p', _trackingId: 'track-1' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) {
-            return [{
-              _id: 'orig',
-              _type: 'article',
-              _courseId: 'c1',
-              _trackingId: 'track-1'
-            }]
-          }
-          if (findCallCount === 2) return [{ _id: 'p', _type: 'page', _courseId: 'c1' }]
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: insertFn,
         preCloneHook: createMockHook(),
         postCloneHook: createMockHook()
@@ -1107,40 +1017,104 @@ describe('ContentModule', () => {
       assert.equal(payload._trackingId, undefined)
     })
 
-    it('should recursively clone children', async () => {
-      let findCallCount = 0
+    it('should recursively clone children using ContentTree', async () => {
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: `new-${data._type}`
       }))
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' },
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' },
+        { _id: 'child1', _type: 'block', _courseId: 'c1', _parentId: 'orig' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          // 1: find original (article)
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1' }]
-          // 2: find parent
-          if (findCallCount === 2) return [{ _id: 'p', _type: 'page', _courseId: 'c1' }]
-          // 3: find children of orig
-          if (findCallCount === 3) return [{ _id: 'child1', _type: 'block', _courseId: 'c1' }]
-          // 4: find orig child (block) for recursive clone
-          if (findCallCount === 4) return [{ _id: 'child1', _type: 'block', _courseId: 'c1' }]
-          // 5: find parent of child clone (new-article)
-          if (findCallCount === 5) return [{ _id: 'new-article', _type: 'article', _courseId: 'c1' }]
-          // 6+: children of child1
-          return []
-        }),
+        find: createCloneFindMock(allItems),
         insert: insertFn,
         preCloneHook: createMockHook(),
         postCloneHook: createMockHook()
       })
 
-      // Bind the real clone method to inst so recursive this.clone() calls work
       inst.clone = ContentModule.prototype.clone.bind(inst)
-
       await inst.clone('user1', 'orig', 'p')
 
       // Should have inserted the article clone and the block clone
       assert.ok(insertFn.mock.callCount() >= 2)
+    })
+
+    it('should disable updateSortOrder and updateEnabledPlugins during recursive clone', async () => {
+      const insertFn = mock.fn(async (data, opts) => ({
+        ...data,
+        _id: `new-${data._type}`
+      }))
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' },
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' },
+        { _id: 'child1', _type: 'block', _courseId: 'c1', _parentId: 'orig' }
+      ]
+      const inst = createInstance({
+        find: createCloneFindMock(allItems),
+        insert: insertFn,
+        preCloneHook: createMockHook(),
+        postCloneHook: createMockHook()
+      })
+
+      inst.clone = ContentModule.prototype.clone.bind(inst)
+      await inst.clone('user1', 'orig', 'p')
+
+      // All inserts should have updateSortOrder: false
+      for (const call of insertFn.mock.calls) {
+        assert.equal(call.arguments[1].updateSortOrder, false)
+      }
+    })
+
+    it('should call updateEnabledPlugins once at top level after clone', async () => {
+      const insertFn = mock.fn(async (data, opts) => ({
+        ...data,
+        _id: `new-${data._type}`
+      }))
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' },
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' },
+        { _id: 'child1', _type: 'block', _courseId: 'c1', _parentId: 'orig' }
+      ]
+      const updateEnabledPluginsFn = mock.fn(async () => {})
+      const inst = createInstance({
+        find: createCloneFindMock(allItems),
+        insert: insertFn,
+        updateEnabledPlugins: updateEnabledPluginsFn,
+        preCloneHook: createMockHook(),
+        postCloneHook: createMockHook()
+      })
+
+      inst.clone = ContentModule.prototype.clone.bind(inst)
+      await inst.clone('user1', 'orig', 'p')
+
+      assert.equal(updateEnabledPluginsFn.mock.callCount(), 1)
+    })
+
+    it('should only issue find calls at top level (not per tree level)', async () => {
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' },
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p' },
+        { _id: 'child1', _type: 'block', _courseId: 'c1', _parentId: 'orig' }
+      ]
+      const findFn = createCloneFindMock(allItems)
+      const inst = createInstance({
+        find: findFn,
+        insert: mock.fn(async (data) => ({ ...data, _id: `new-${data._type}` })),
+        preCloneHook: createMockHook(),
+        postCloneHook: createMockHook()
+      })
+
+      inst.clone = ContentModule.prototype.clone.bind(inst)
+      await inst.clone('user1', 'orig', 'p')
+
+      // Should only have 3 find calls: original doc, parent doc, course items for tree
+      assert.equal(findFn.mock.callCount(), 3)
     })
   })
 
@@ -1568,42 +1542,29 @@ describe('ContentModule', () => {
   // Edge cases
   // -----------------------------------------------------------------------
   describe('edge cases', () => {
-    it('getDescendants should handle items with no _parentId property', async () => {
-      const inst = createInstance({
-        find: mock.fn(async () => [
-          { _id: 'root', _courseId: 'c1', _type: 'course' },
-          { _id: 'config1', _courseId: 'c1', _type: 'config' }
-        ])
-      })
-
-      const result = await getDescendants(q => inst.find(q), {
-        _id: 'root',
-        _courseId: 'c1',
-        _type: 'course'
-      })
-
-      assert.ok(result.some(r => r._type === 'config'))
-    })
-
     it('clone should allow course type without _parentId when config exists', async () => {
-      let findCallCount = 0
+      const allItems = [
+        { _id: 'orig-course', _type: 'course', _courseId: 'orig-course' },
+        { _id: 'config1', _type: 'config', _courseId: 'orig-course' }
+      ]
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-course-id'
       }))
       const updateFn = mock.fn(async () => ({}))
+      const findFn = mock.fn(async (query) => {
+        return allItems.filter(item => {
+          return Object.entries(query).every(([k, v]) => {
+            const itemVal = item[k]
+            if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+              return itemVal.toString() === v
+            }
+            return itemVal === v
+          })
+        })
+      })
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          // 1: find original course
-          if (findCallCount === 1) return [{ _id: 'orig-course', _type: 'course', _courseId: 'orig-course' }]
-          // 2: find config for the course clone
-          if (findCallCount === 2) return [{ _id: 'config1', _type: 'config', _courseId: 'orig-course' }]
-          // 3: find config original for the recursive clone call
-          if (findCallCount === 3) return [{ _id: 'config1', _type: 'config', _courseId: 'orig-course' }]
-          // 4+: children lookups
-          return []
-        }),
+        find: findFn,
         insert: insertFn,
         update: updateFn,
         preCloneHook: createMockHook(),
@@ -1742,17 +1703,25 @@ describe('ContentModule', () => {
     })
 
     it('clone should clear _friendlyId for non-course types', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-id'
       }))
+      const allItems = [
+        { _id: 'p', _type: 'page', _courseId: 'c1', _parentId: 'c1' },
+        { _id: 'orig', _type: 'article', _courseId: 'c1', _parentId: 'p', _friendlyId: 'art-1' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'orig', _type: 'article', _courseId: 'c1', _friendlyId: 'art-1' }]
-          if (findCallCount === 2) return [{ _id: 'p', _type: 'page', _courseId: 'c1' }]
-          return []
+        find: mock.fn(async (query) => {
+          return allItems.filter(item => {
+            return Object.entries(query).every(([k, v]) => {
+              const itemVal = item[k]
+              if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                return itemVal.toString() === v
+              }
+              return itemVal === v
+            })
+          })
         }),
         insert: insertFn,
         preCloneHook: createMockHook(),
@@ -1766,16 +1735,24 @@ describe('ContentModule', () => {
     })
 
     it('clone should preserve _friendlyId for course types', async () => {
-      let findCallCount = 0
       const insertFn = mock.fn(async (data, opts) => ({
         ...data,
         _id: 'new-course-id'
       }))
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1', _friendlyId: 'course-1' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'c1', _type: 'course', _courseId: 'c1', _friendlyId: 'course-1' }]
-          return []
+        find: mock.fn(async (query) => {
+          return allItems.filter(item => {
+            return Object.entries(query).every(([k, v]) => {
+              const itemVal = item[k]
+              if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                return itemVal.toString() === v
+              }
+              return itemVal === v
+            })
+          })
         }),
         insert: insertFn,
         update: mock.fn(async () => ({})),
@@ -1790,12 +1767,20 @@ describe('ContentModule', () => {
     })
 
     it('should handle clone of course when no config exists', async () => {
-      let findCallCount = 0
+      const allItems = [
+        { _id: 'c1', _type: 'course', _courseId: 'c1' }
+      ]
       const inst = createInstance({
-        find: mock.fn(async () => {
-          findCallCount++
-          if (findCallCount === 1) return [{ _id: 'c1', _type: 'course', _courseId: 'c1' }]
-          return [] // no config, no children
+        find: mock.fn(async (query) => {
+          return allItems.filter(item => {
+            return Object.entries(query).every(([k, v]) => {
+              const itemVal = item[k]
+              if (itemVal && typeof itemVal.toString === 'function' && typeof v === 'string') {
+                return itemVal.toString() === v
+              }
+              return itemVal === v
+            })
+          })
         }),
         insert: mock.fn(async (data, opts) => ({ ...data, _id: 'new-c1' })),
         update: mock.fn(async () => ({})),

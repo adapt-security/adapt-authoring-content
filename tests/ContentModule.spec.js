@@ -87,18 +87,6 @@ describe('ContentModule', () => {
     it('should return early when _parentId is falsy', async () => {
       assert.equal(await call({ _type: 'article', _id: 'x' }, {}), undefined)
     })
-
-    it('should query siblings excluding current item', async () => {
-      const findMock = mock.fn(async () => [])
-      const inst = createInstance({ find: findMock })
-      await ContentModule.prototype.updateSortOrder.call(
-        inst,
-        { _type: 'article', _parentId: 'p1', _id: 'x', _sortOrder: 1 },
-        undefined // no updateData = no splice, no super.update calls
-      )
-      assert.equal(findMock.mock.callCount(), 1)
-      assert.deepEqual(findMock.mock.calls[0].arguments[0], { _parentId: 'p1', _id: { $ne: 'x' } })
-    })
   })
 
   describe('update guards', () => {

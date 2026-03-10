@@ -3,8 +3,8 @@
     "data": {
       "parentId": "_id of the parent item"
     },
-    "description": "Specified item is not a valid content item Invalid parent itemparent",
-    "statusCode": 500
+    "description": "Specified item is not a valid content parent",
+    "statusCode": 400
   },
   "DUPL_FRIENDLY_ID": {
     "data": {
@@ -13,14 +13,5 @@
     },
     "description": "A content item with this _friendlyId already exists in this course",
     "statusCode": 409
-  },
-  "UNKNOWN_SCHEMA_NAME": {
-    "data": {
-      "_id": "The database _id",
-      "_type": "The _type value",
-      "_component": "The _component value"
-    },
-    "description": "Failed to determine schema name",
-    "statusCode": 500
   }
 }

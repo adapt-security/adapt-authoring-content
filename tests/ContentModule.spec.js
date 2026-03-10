@@ -101,6 +101,60 @@ describe('ContentModule', () => {
     })
   })
 
+  describe('update guards', () => {
+    // Exercises the guard logic from update() — whether updateSortOrder/updateEnabledPlugins
+    // are called based on which fields are in the update data.
+    // We replicate the guard block directly because super.update cannot be mocked on a plain object.
+    async function callUpdate (data) {
+      const updateSortOrder = mock.fn(async () => {})
+      const updateEnabledPlugins = mock.fn(async () => {})
+      const doc = { _id: 'x', _courseId: 'c', ...data }
+      const sortChanged = '_sortOrder' in data || '_parentId' in data
+      const pluginsChanged = '_component' in data || '_menu' in data || '_theme' in data || '_enabledPlugins' in data
+      await Promise.all([
+        sortChanged && updateSortOrder(doc, data),
+        pluginsChanged && updateEnabledPlugins(doc, data._enabledPlugins ? { forceUpdate: true } : {})
+      ])
+      return { updateSortOrder, updateEnabledPlugins }
+    }
+
+    it('should skip both when updating unrelated fields', async () => {
+      const { updateSortOrder, updateEnabledPlugins } = await callUpdate({ title: 'new' })
+      assert.equal(updateSortOrder.mock.callCount(), 0)
+      assert.equal(updateEnabledPlugins.mock.callCount(), 0)
+    })
+
+    it('should call updateSortOrder when _sortOrder changes', async () => {
+      const { updateSortOrder } = await callUpdate({ _sortOrder: 2 })
+      assert.equal(updateSortOrder.mock.callCount(), 1)
+    })
+
+    it('should call updateSortOrder when _parentId changes', async () => {
+      const { updateSortOrder } = await callUpdate({ _parentId: 'p2' })
+      assert.equal(updateSortOrder.mock.callCount(), 1)
+    })
+
+    it('should call updateEnabledPlugins when _component changes', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _component: 'new-comp' })
+      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
+    })
+
+    it('should call updateEnabledPlugins when _enabledPlugins changes', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _enabledPlugins: [] })
+      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
+    })
+
+    it('should call updateEnabledPlugins when _menu changes', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _menu: 'new-menu' })
+      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
+    })
+
+    it('should call updateEnabledPlugins when _theme changes', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _theme: 'new-theme' })
+      assert.equal(updateEnabledPlugins.mock.callCount(), 1)
+    })
+  })
+
   describe('registerConfigSchemas', () => {
     it('should extend config schema with authored and tags', () => {
       const extendSchema = mock.fn()

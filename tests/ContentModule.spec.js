@@ -3,16 +3,35 @@ import assert from 'node:assert/strict'
 
 const { default: ContentModule } = await import('../lib/ContentModule.js')
 
-// Minimal stub — just enough for methods that only need `this.contentplugin`, etc.
+const COURSE_ID = '507f1f77bcf86cd799439011'
+
+function createMockCollection (overrides = {}) {
+  return {
+    findOne: mock.fn(async () => null),
+    updateOne: mock.fn(async () => {}),
+    findOneAndUpdate: mock.fn(async () => ({ seq: 1 })),
+    find: mock.fn(() => ({ toArray: mock.fn(async () => []) })),
+    deleteMany: mock.fn(async () => {}),
+    ...overrides
+  }
+}
+
+function createMockMongodb (collectionOverrides) {
+  const col = createMockCollection(collectionOverrides)
+  return { getCollection: mock.fn(() => col), collection: col }
+}
+
 function createInstance (overrides = {}) {
   return {
     schemaName: 'content',
-    contentplugin: {
-      findOne: mock.fn(async () => null)
-    },
+    collectionName: 'content',
+    counterCollectionName: 'contentcounters',
+    idInterval: 5,
+    contentplugin: { findOne: mock.fn(async () => null) },
     jsonschema: { extendSchema: mock.fn() },
     authored: { schemaName: 'authored' },
     tags: { schemaExtensionName: 'tags' },
+    mongodb: createMockMongodb(),
     find: mock.fn(async () => []),
     findOne: mock.fn(async () => null),
     ...overrides
@@ -195,6 +214,105 @@ describe('ContentModule', () => {
       assert.equal(extendSchema.mock.callCount(), 2)
       assert.deepEqual(extendSchema.mock.calls[0].arguments, ['config', 'authored'])
       assert.deepEqual(extendSchema.mock.calls[1].arguments, ['config', 'tags-ext'])
+    })
+  })
+
+  describe('generateFriendlyId', () => {
+    const bind = (overrides) => {
+      const inst = createInstance(overrides)
+      inst.findMaxSeq = ContentModule.prototype.findMaxSeq.bind(inst)
+      return ContentModule.prototype.generateFriendlyId.bind(inst)
+    }
+
+    it('should return "config" for config type', async () => {
+      assert.equal(await bind()({ _type: 'config' }), 'config')
+    })
+
+    it('should generate a course ID without language', async () => {
+      const result = await bind()({ _type: 'course' })
+      assert.equal(result, 'course-1')
+    })
+
+    it('should generate a course ID with language', async () => {
+      const result = await bind()({ _type: 'course', _language: 'en' })
+      assert.equal(result, 'course-1-en')
+    })
+
+    it('should generate a non-course ID using type prefix and interval', async () => {
+      const result = await bind()({ _type: 'block', _courseId: COURSE_ID })
+      assert.equal(result, 'b-5')
+    })
+
+    it('should seed counter from existing content on first use', async () => {
+      const docs = [{ _friendlyId: 'b-10' }, { _friendlyId: 'b-15' }]
+      const mongodb = createMockMongodb({
+        findOneAndUpdate: mock.fn(async () => ({ seq: 4 })),
+        find: mock.fn(() => ({ toArray: mock.fn(async () => docs) }))
+      })
+      await bind({ mongodb })({ _type: 'block', _courseId: COURSE_ID })
+      assert.equal(mongodb.collection.updateOne.mock.callCount(), 1)
+      assert.deepEqual(mongodb.collection.updateOne.mock.calls[0].arguments[1], { $setOnInsert: { seq: 3 } })
+    })
+
+    it('should skip seeding when counter already exists', async () => {
+      const mongodb = createMockMongodb({
+        findOne: mock.fn(async () => ({ seq: 5 })),
+        findOneAndUpdate: mock.fn(async () => ({ seq: 6 }))
+      })
+      await bind({ mongodb })({ _type: 'block', _courseId: COURSE_ID })
+      assert.equal(mongodb.collection.updateOne.mock.callCount(), 0)
+    })
+
+    it('should atomically increment the counter', async () => {
+      const mongodb = createMockMongodb({
+        findOne: mock.fn(async () => ({ seq: 6 })),
+        findOneAndUpdate: mock.fn(async () => ({ seq: 7 }))
+      })
+      const result = await bind({ mongodb })({ _type: 'article', _courseId: COURSE_ID })
+      assert.equal(result, 'a-35')
+      assert.equal(mongodb.collection.findOneAndUpdate.mock.callCount(), 1)
+      assert.deepEqual(mongodb.collection.findOneAndUpdate.mock.calls[0].arguments[1], { $inc: { seq: 1 } })
+    })
+  })
+
+  describe('findMaxSeq', () => {
+    const bind = (docs) => ContentModule.prototype.findMaxSeq.bind(createInstance({
+      mongodb: createMockMongodb({
+        find: mock.fn(() => ({ toArray: mock.fn(async () => docs) }))
+      })
+    }))
+
+    it('should return 0 when no documents exist', async () => {
+      assert.equal(await bind([])('block', COURSE_ID), 0)
+    })
+
+    it('should return max number divided by interval for non-course types', async () => {
+      const docs = [{ _friendlyId: 'b-10' }, { _friendlyId: 'b-25' }, { _friendlyId: 'b-5' }]
+      assert.equal(await bind(docs)('block', COURSE_ID), 5)
+    })
+
+    it('should return raw max number for course type', async () => {
+      const docs = [{ _friendlyId: 'course-3-en' }, { _friendlyId: 'course-7-fr' }]
+      assert.equal(await bind(docs)('course'), 7)
+    })
+
+    it('should skip documents without numeric IDs', async () => {
+      const docs = [{ _friendlyId: 'config' }, { _friendlyId: 'b-15' }]
+      assert.equal(await bind(docs)('block', COURSE_ID), 3)
+    })
+  })
+
+  describe('deleteCounters', () => {
+    it('should call deleteMany with parsed ObjectIds', async () => {
+      const mongodb = createMockMongodb()
+      await ContentModule.prototype.deleteCounters.call(
+        createInstance({ mongodb }),
+        ['507f1f77bcf86cd799439011']
+      )
+      assert.equal(mongodb.collection.deleteMany.mock.callCount(), 1)
+      const query = mongodb.collection.deleteMany.mock.calls[0].arguments[0]
+      assert.ok(query._courseId.$in)
+      assert.equal(query._courseId.$in.length, 1)
     })
   })
 })

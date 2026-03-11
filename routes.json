@@ -33,6 +33,9 @@
                         "displayTitle": { "type": "string" },
                         "_component": { "type": "string" },
                         "_layout": { "type": "string" },
+                        "_menu": { "type": "string" },
+                        "_theme": { "type": "string" },
+                        "_enabledPlugins": { "type": "array", "items": { "type": "string" } },
                         "updatedAt": { "type": "string", "format": "date-time" },
                         "_children": { "type": "array", "items": { "type": "string" } }
                       }

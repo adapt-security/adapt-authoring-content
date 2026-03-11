@@ -2,6 +2,53 @@
   "root": "content",
   "routes": [
     {
+      "route": "/tree/:_courseId",
+      "handlers": { "get": "handleTree" },
+      "permissions": { "get": ["read:${scope}"] },
+      "meta": {
+        "get": {
+          "summary": "Get lightweight content tree for a course",
+          "description": "Returns a projected subset of fields for all content items in a course, suitable for rendering tree views without fetching full documents. Supports If-Modified-Since for conditional requests — returns 304 if the course has not been modified since the given date.",
+          "parameters": [
+            { "name": "_courseId", "in": "path", "description": "The course _id", "required": true },
+            { "name": "If-Modified-Since", "in": "header", "description": "Return 304 if the course has not been modified since this date", "required": false }
+          ],
+          "responses": {
+            "200": {
+              "description": "Array of projected content items",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "_id": { "type": "string" },
+                        "_parentId": { "type": "string" },
+                        "_courseId": { "type": "string" },
+                        "_type": { "type": "string" },
+                        "_sortOrder": { "type": "number" },
+                        "title": { "type": "string" },
+                        "displayTitle": { "type": "string" },
+                        "_component": { "type": "string" },
+                        "_layout": { "type": "string" },
+                        "updatedAt": { "type": "string", "format": "date-time" },
+                        "_children": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "304": {
+              "description": "Course has not been modified since the If-Modified-Since date"
+            }
+          }
+        }
+      }
+    },
+    {
       "route": "/insertrecursive",
       "handlers": { "post": "handleInsertRecursive" },
       "permissions": { "post": ["write:${scope}"] },

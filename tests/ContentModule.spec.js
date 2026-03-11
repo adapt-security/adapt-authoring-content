@@ -71,6 +71,35 @@ describe('ContentModule', () => {
       assert.equal(await bind({ findOne: findOneMock })({ _id: 'some-id' }), 'article')
       assert.equal(findOneMock.mock.callCount(), 1)
     })
+
+    it('should populate data._courseId from DB when missing', async () => {
+      const findOneMock = mock.fn(async () => ({ _type: 'article', _courseId: 'c123' }))
+      const data = { _id: 'some-id' }
+      await bind({ findOne: findOneMock })(data)
+      assert.equal(data._courseId, 'c123')
+    })
+
+    it('should not overwrite existing data._courseId', async () => {
+      const findOneMock = mock.fn(async () => ({ _type: 'article', _courseId: 'c999' }))
+      const data = { _id: 'some-id', _courseId: 'c123' }
+      await bind({ findOne: findOneMock })(data)
+      assert.equal(data._courseId, 'c123')
+    })
+
+    it('should return default when DB lookup returns null', async () => {
+      const findOneMock = mock.fn(async () => null)
+      assert.equal(await bind({ findOne: findOneMock })({ _id: 'missing' }), 'content')
+    })
+
+    it('should not query DB when both _type and _component are present', async () => {
+      const findOneMock = mock.fn(async () => null)
+      const fn = bind({
+        findOne: findOneMock,
+        contentplugin: { findOne: mock.fn(async () => ({ targetAttribute: '_text' })) }
+      })
+      await fn({ _id: 'some-id', _type: 'component', _component: 'adapt-contrib-text' })
+      assert.equal(findOneMock.mock.callCount(), 0)
+    })
   })
 
   describe('updateSortOrder', () => {
@@ -141,6 +170,16 @@ describe('ContentModule', () => {
     it('should call updateEnabledPlugins when _theme changes', async () => {
       const { updateEnabledPlugins } = await callUpdate({ _theme: 'new-theme' })
       assert.equal(updateEnabledPlugins.mock.callCount(), 1)
+    })
+
+    it('should pass forceUpdate when _enabledPlugins is in data', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _enabledPlugins: ['p1'] })
+      assert.deepEqual(updateEnabledPlugins.mock.calls[0].arguments[1], { forceUpdate: true })
+    })
+
+    it('should not pass forceUpdate for other plugin fields', async () => {
+      const { updateEnabledPlugins } = await callUpdate({ _component: 'x' })
+      assert.deepEqual(updateEnabledPlugins.mock.calls[0].arguments[1], {})
     })
   })
 

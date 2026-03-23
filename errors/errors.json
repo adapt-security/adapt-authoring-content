@@ -13,5 +13,13 @@
     },
     "description": "A content item with this _friendlyId already exists in this course",
     "statusCode": 409
+  },
+  "RESOURCE_IN_USE": {
+    "data": {
+      "type": "Type of resource",
+      "courses": "Courses using the resource"
+    },
+    "description": "Resource is currently being used in courses",
+    "statusCode": 400
   }
 }

@@ -12,47 +12,22 @@
   },
   "dependencies": {
     "adapt-authoring-api": "^3.0.0",
-    "adapt-authoring-core": "^2.0.0"
+    "adapt-authoring-core": "^2.0.0",
+    "adapt-authoring-mongodb": "^3.1.0"
   },
   "peerDependencies": {
+    "adapt-authoring-assets": "^1.0.0",
     "adapt-authoring-authored": "^1.1.1",
     "adapt-authoring-contentplugin": "^1.0.6",
     "adapt-authoring-jsonschema": "^1.2.0",
-    "adapt-authoring-mongodb": "^3.0.0",
     "adapt-authoring-tags": "^1.0.2"
   },
   "devDependencies": {
+    "@adaptlearning/semantic-release-config": "^1.0.0",
     "adapt-authoring-server": "^2.1.0",
-    "@semantic-release/git": "^10.0.1",
-    "conventional-changelog-eslint": "^6.0.0",
-    "semantic-release": "^25.0.2",
     "standard": "^17.1.0"
   },
   "release": {
-    "plugins": [
-      [
-        "@semantic-release/commit-analyzer",
-        {
-          "preset": "eslint"
-        }
-      ],
-      [
-        "@semantic-release/release-notes-generator",
-        {
-          "preset": "eslint"
-        }
-      ],
-      "@semantic-release/npm",
-      "@semantic-release/github",
-      [
-        "@semantic-release/git",
-        {
-          "assets": [
-            "package.json"
-          ],
-          "message": "Chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
-        }
-      ]
-    ]
+    "extends": "@adaptlearning/semantic-release-config"
   }
 }

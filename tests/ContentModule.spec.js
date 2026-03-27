@@ -2,6 +2,7 @@ import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
 const { default: ContentModule } = await import('../lib/ContentModule.js')
+const { default: ContentTree } = await import('../lib/ContentTree.js')
 
 const COURSE_ID = '507f1f77bcf86cd799439011'
 
@@ -313,6 +314,239 @@ describe('ContentModule', () => {
       const query = mongodb.collection.deleteMany.mock.calls[0].arguments[0]
       assert.ok(query._courseId.$in)
       assert.equal(query._courseId.$in.length, 1)
+    })
+  })
+
+  describe('clone', () => {
+    const COURSE_OID = '507f1f77bcf86cd799439011'
+    const PAGE_OID = '507f1f77bcf86cd799439022'
+    const ART_OID = '507f1f77bcf86cd799439033'
+    const BLOCK_OID = '507f1f77bcf86cd799439044'
+    const COMP_OID = '507f1f77bcf86cd799439055'
+    const CONFIG_OID = '507f1f77bcf86cd799439066'
+    const PARENT_OID = '507f1f77bcf86cd799439077'
+
+    function createCloneInstance (collectionOverrides = {}) {
+      const insertedDocs = []
+      const mongodb = createMockMongodb({
+        insertMany: mock.fn(async (docs) => { insertedDocs.push(...docs) }),
+        deleteMany: mock.fn(async () => {}),
+        ...collectionOverrides
+      })
+      const inst = createInstance({
+        mongodb,
+        app: { errors: { NOT_FOUND: makeError('NOT_FOUND'), INVALID_PARENT: makeError('INVALID_PARENT') } },
+        generateFriendlyIds: mock.fn(async (_type, _courseId, count) => {
+          return Array.from({ length: count }, (_, i) => `${_type[0]}-${i + 1}`)
+        }),
+        getSchema: mock.fn(async () => ({})),
+        updateEnabledPlugins: mock.fn(async () => {}),
+        preCloneHook: { invoke: mock.fn(async () => {}) },
+        preInsertHook: { invoke: mock.fn(async () => {}) },
+        postInsertHook: { invoke: mock.fn(async () => {}) },
+        postCloneHook: { invoke: mock.fn(async () => {}) }
+      })
+      return { inst, mongodb, insertedDocs }
+    }
+
+    function makeError (code) {
+      return { code, setData: (d) => Object.assign(new Error(code), { code, data: d }) }
+    }
+
+    it('should throw NOT_FOUND when original doc is missing', async () => {
+      const { inst } = createCloneInstance()
+
+      const tree = new ContentTree([])
+      await assert.rejects(
+        () => ContentModule.prototype.clone.call(inst, 'user1', 'missing-id', PARENT_OID, {}, { tree }),
+        (err) => err.code === 'NOT_FOUND'
+      )
+    })
+
+    it('should throw INVALID_PARENT when non-course has no parent', async () => {
+      const { inst } = createCloneInstance()
+
+      const tree = new ContentTree([
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
+      ])
+      inst.findOne = mock.fn(async () => null) // parent lookup returns null
+      await assert.rejects(
+        () => ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, 'bad-parent', {}, { tree }),
+        (err) => err.code === 'INVALID_PARENT'
+      )
+    })
+
+    it('should clone a page and its descendants via insertMany', async () => {
+      const { inst, mongodb } = createCloneInstance()
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID },
+        { _id: ART_OID, _type: 'article', _parentId: PAGE_OID, _courseId: COURSE_OID },
+        { _id: BLOCK_OID, _type: 'block', _parentId: ART_OID, _courseId: COURSE_OID },
+        { _id: COMP_OID, _type: 'component', _parentId: BLOCK_OID, _courseId: COURSE_OID, _component: 'adapt-contrib-text' }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      const result = await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, { title: 'Cloned' }, { tree, parent })
+
+      // insertMany should have been called once
+      assert.equal(mongodb.collection.insertMany.mock.callCount(), 1)
+      const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
+      // should clone page + article + block + component = 4 items
+      assert.equal(inserted.length, 4)
+      // root payload should have customData applied
+      assert.equal(result.title, 'Cloned')
+      assert.equal(result.createdBy, 'user1')
+    })
+
+    it('should clone a course with config', async () => {
+      const { inst, mongodb } = createCloneInstance()
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID, _friendlyId: 'course-1' },
+        { _id: CONFIG_OID, _type: 'config', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
+      ]
+      const tree = new ContentTree(items)
+      const result = await ContentModule.prototype.clone.call(inst, 'user1', COURSE_OID, undefined, {}, { tree })
+
+      const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
+      // course + config + page = 3
+      assert.equal(inserted.length, 3)
+      assert.equal(result._type, 'course')
+    })
+
+    it('should remap parent IDs correctly', async () => {
+      const { inst, mongodb } = createCloneInstance()
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID },
+        { _id: ART_OID, _type: 'article', _parentId: PAGE_OID, _courseId: COURSE_OID }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+
+      const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
+      const clonedPage = inserted.find(d => d._type === 'page')
+      const clonedArticle = inserted.find(d => d._type === 'article')
+      // article's parent should be the cloned page's new ID, not the original
+      assert.equal(clonedArticle._parentId.toString(), clonedPage._id.toString())
+    })
+
+    it('should roll back on insertMany failure', async () => {
+      const deleteManyMock = mock.fn(async () => {})
+      const { inst, mongodb } = createCloneInstance({
+        insertMany: mock.fn(async () => { throw new Error('insert failed') }),
+        deleteMany: deleteManyMock
+      })
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      await assert.rejects(
+        () => ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent }),
+        { message: 'insert failed' }
+      )
+      // should attempt cleanup via deleteMany
+      assert.equal(mongodb.collection.deleteMany.mock.callCount(), 1)
+    })
+
+    it('should fire pre/post clone hooks', async () => {
+      const { inst } = createCloneInstance()
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+
+      assert.ok(inst.preCloneHook.invoke.mock.callCount() > 0)
+      assert.ok(inst.postCloneHook.invoke.mock.callCount() > 0)
+      assert.ok(inst.preInsertHook.invoke.mock.callCount() > 0)
+      assert.ok(inst.postInsertHook.invoke.mock.callCount() > 0)
+    })
+  })
+
+  describe('handleTree', () => {
+    it('should return 304 when content has not been modified', async () => {
+      const lastModified = new Date('2025-01-01T00:00:00Z')
+      const inst = createInstance({
+        findOne: mock.fn(async () => ({ updatedAt: lastModified }))
+      })
+      let statusCode
+      let ended = false
+      const req = {
+        apiData: { query: { _courseId: COURSE_ID } },
+        headers: { 'if-modified-since': new Date('2025-01-02T00:00:00Z').toUTCString() }
+      }
+      const res = {
+        status: mock.fn(function (code) { statusCode = code; return this }),
+        end: mock.fn(() => { ended = true })
+      }
+      const next = mock.fn()
+      await ContentModule.prototype.handleTree.call(inst, req, res, next)
+      assert.equal(statusCode, 304)
+      assert.equal(ended, true)
+      assert.equal(next.mock.callCount(), 0)
+    })
+
+    it('should return items with _children when content has been modified', async () => {
+      const lastModified = new Date('2025-01-15T00:00:00Z')
+      const items = [
+        { _id: COURSE_ID, _type: 'course', _courseId: COURSE_ID },
+        { _id: 'page1', _type: 'page', _parentId: COURSE_ID, _courseId: COURSE_ID },
+        { _id: 'art1', _type: 'article', _parentId: 'page1', _courseId: COURSE_ID }
+      ]
+      const inst = createInstance({
+        findOne: mock.fn(async () => ({ updatedAt: lastModified })),
+        find: mock.fn(async () => items)
+      })
+      const req = {
+        apiData: { query: { _courseId: COURSE_ID } },
+        headers: {}
+      }
+      let responseData
+      let lastModifiedHeader
+      const res = {
+        set: mock.fn((key, val) => { if (key === 'Last-Modified') lastModifiedHeader = val }),
+        json: mock.fn((data) => { responseData = data })
+      }
+      const next = mock.fn()
+      await ContentModule.prototype.handleTree.call(inst, req, res, next)
+
+      assert.equal(next.mock.callCount(), 0)
+      assert.equal(responseData.length, 3)
+      // course should have page1 as child
+      const course = responseData.find(i => i._id === COURSE_ID)
+      assert.deepEqual(course._children, ['page1'])
+      // page should have art1 as child
+      const page = responseData.find(i => i._id === 'page1')
+      assert.deepEqual(page._children, ['art1'])
+      // article should have no children
+      const art = responseData.find(i => i._id === 'art1')
+      assert.deepEqual(art._children, [])
+      // Last-Modified header should be set
+      assert.equal(lastModifiedHeader, lastModified.toUTCString())
+    })
+
+    it('should call next on error', async () => {
+      const inst = createInstance({
+        findOne: mock.fn(async () => { throw new Error('db error') })
+      })
+      const req = { apiData: { query: { _courseId: COURSE_ID } }, headers: {} }
+      const res = {}
+      const next = mock.fn()
+      await ContentModule.prototype.handleTree.call(inst, req, res, next)
+      assert.equal(next.mock.callCount(), 1)
+      assert.equal(next.mock.calls[0].arguments[0].message, 'db error')
     })
   })
 })

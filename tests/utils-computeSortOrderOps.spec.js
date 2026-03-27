@@ -61,7 +61,7 @@ describe('computeSortOrderOps', () => {
       assert.deepEqual(ops[0], { updateOne: { filter: { _id: 'b' }, update: { $set: { _sortOrder: 3 } } } })
     })
 
-    it('inserts at beginning when _sortOrder is 1', () => {
+    it('appends to end when _sortOrder is 0', () => {
       const siblings = [
         { _id: 'a', _sortOrder: 1 },
         { _id: 'b', _sortOrder: 2 }

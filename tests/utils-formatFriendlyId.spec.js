@@ -3,19 +3,17 @@ import assert from 'node:assert/strict'
 import formatFriendlyId from '../lib/utils/formatFriendlyId.js'
 
 describe('formatFriendlyId', () => {
-  const idInterval = 5
-
   describe('course type', () => {
     it('formats without language', () => {
-      assert.equal(formatFriendlyId('course', 1, idInterval), 'course-1')
+      assert.equal(formatFriendlyId('course', 1), 'course-1')
     })
 
     it('formats with language', () => {
-      assert.equal(formatFriendlyId('course', 3, idInterval, 'en'), 'course-3-en')
+      assert.equal(formatFriendlyId('course', 3, 'en'), 'course-3-en')
     })
 
     it('omits language suffix when _language is empty string', () => {
-      assert.equal(formatFriendlyId('course', 2, idInterval, ''), 'course-2')
+      assert.equal(formatFriendlyId('course', 2, ''), 'course-2')
     })
   })
 
@@ -27,15 +25,15 @@ describe('formatFriendlyId', () => {
 
   describe('other types', () => {
     const cases = [
-      { _type: 'page', count: 1, expected: 'p-5' },
-      { _type: 'article', count: 2, expected: 'a-10' },
-      { _type: 'block', count: 3, expected: 'b-15' },
-      { _type: 'component', count: 4, expected: 'c-20' }
+      { _type: 'page', count: 1, expected: 'p-1' },
+      { _type: 'article', count: 2, expected: 'a-2' },
+      { _type: 'block', count: 3, expected: 'b-3' },
+      { _type: 'component', count: 4, expected: 'c-4' }
     ]
 
     for (const { _type, count, expected } of cases) {
       it(`formats ${_type} with count ${count} as "${expected}"`, () => {
-        assert.equal(formatFriendlyId(_type, count, idInterval), expected)
+        assert.equal(formatFriendlyId(_type, count), expected)
       })
     }
   })

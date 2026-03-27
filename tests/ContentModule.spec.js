@@ -1,8 +1,8 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
-const { default: ContentModule } = await import('../lib/ContentModule.js')
-const { default: ContentTree } = await import('../lib/ContentTree.js')
+import ContentModule from '../lib/ContentModule.js'
+import ContentTree from '../lib/ContentTree.js'
 
 const COURSE_ID = '507f1f77bcf86cd799439011'
 
@@ -218,30 +218,30 @@ describe('ContentModule', () => {
     })
   })
 
-  describe('generateFriendlyId', () => {
+  describe('generateFriendlyIds', () => {
     const bind = (overrides) => {
       const inst = createInstance(overrides)
       inst.findMaxSeq = ContentModule.prototype.findMaxSeq.bind(inst)
-      return ContentModule.prototype.generateFriendlyId.bind(inst)
+      return ContentModule.prototype.generateFriendlyIds.bind(inst)
     }
 
-    it('should return "config" for config type', async () => {
-      assert.equal(await bind()({ _type: 'config' }), 'config')
+    it('should return ["config"] for config type', async () => {
+      assert.deepEqual(await bind()('config', null, 1), ['config'])
     })
 
     it('should generate a course ID without language', async () => {
-      const result = await bind()({ _type: 'course' })
-      assert.equal(result, 'course-1')
+      const result = await bind()('course', null, 1)
+      assert.deepEqual(result, ['course-1'])
     })
 
     it('should generate a course ID with language', async () => {
-      const result = await bind()({ _type: 'course', _language: 'en' })
-      assert.equal(result, 'course-1-en')
+      const result = await bind()('course', null, 1, 'en')
+      assert.deepEqual(result, ['course-1-en'])
     })
 
-    it('should generate a non-course ID using type prefix and interval', async () => {
-      const result = await bind()({ _type: 'block', _courseId: COURSE_ID })
-      assert.equal(result, 'b-5')
+    it('should generate a non-course ID using type prefix', async () => {
+      const result = await bind()('block', COURSE_ID, 1)
+      assert.deepEqual(result, ['b-1'])
     })
 
     it('should seed counter from existing content on first use', async () => {
@@ -250,9 +250,9 @@ describe('ContentModule', () => {
         findOneAndUpdate: mock.fn(async () => ({ seq: 4 })),
         find: mock.fn(() => ({ toArray: mock.fn(async () => docs) }))
       })
-      await bind({ mongodb })({ _type: 'block', _courseId: COURSE_ID })
+      await bind({ mongodb })('block', COURSE_ID, 1)
       assert.equal(mongodb.collection.updateOne.mock.callCount(), 1)
-      assert.deepEqual(mongodb.collection.updateOne.mock.calls[0].arguments[1], { $setOnInsert: { seq: 3 } })
+      assert.deepEqual(mongodb.collection.updateOne.mock.calls[0].arguments[1], { $setOnInsert: { seq: 15 } })
     })
 
     it('should skip seeding when counter already exists', async () => {
@@ -260,7 +260,7 @@ describe('ContentModule', () => {
         findOne: mock.fn(async () => ({ seq: 5 })),
         findOneAndUpdate: mock.fn(async () => ({ seq: 6 }))
       })
-      await bind({ mongodb })({ _type: 'block', _courseId: COURSE_ID })
+      await bind({ mongodb })('block', COURSE_ID, 1)
       assert.equal(mongodb.collection.updateOne.mock.callCount(), 0)
     })
 
@@ -269,8 +269,8 @@ describe('ContentModule', () => {
         findOne: mock.fn(async () => ({ seq: 6 })),
         findOneAndUpdate: mock.fn(async () => ({ seq: 7 }))
       })
-      const result = await bind({ mongodb })({ _type: 'article', _courseId: COURSE_ID })
-      assert.equal(result, 'a-35')
+      const result = await bind({ mongodb })('article', COURSE_ID, 1)
+      assert.deepEqual(result, ['a-7'])
       assert.equal(mongodb.collection.findOneAndUpdate.mock.callCount(), 1)
       assert.deepEqual(mongodb.collection.findOneAndUpdate.mock.calls[0].arguments[1], { $inc: { seq: 1 } })
     })
@@ -287,9 +287,9 @@ describe('ContentModule', () => {
       assert.equal(await bind([])('block', COURSE_ID), 0)
     })
 
-    it('should return max number divided by interval for non-course types', async () => {
+    it('should return max number for non-course types', async () => {
       const docs = [{ _friendlyId: 'b-10' }, { _friendlyId: 'b-25' }, { _friendlyId: 'b-5' }]
-      assert.equal(await bind(docs)('block', COURSE_ID), 5)
+      assert.equal(await bind(docs)('block', COURSE_ID), 25)
     })
 
     it('should return raw max number for course type', async () => {
@@ -299,7 +299,7 @@ describe('ContentModule', () => {
 
     it('should skip documents without numeric IDs', async () => {
       const docs = [{ _friendlyId: 'config' }, { _friendlyId: 'b-15' }]
-      assert.equal(await bind(docs)('block', COURSE_ID), 3)
+      assert.equal(await bind(docs)('block', COURSE_ID), 15)
     })
   })
 

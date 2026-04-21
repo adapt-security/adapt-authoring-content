@@ -514,6 +514,42 @@ describe('ContentModule', () => {
       assert.ok(inst.preInsertHook.invoke.mock.callCount() > 0)
       assert.ok(inst.postInsertHook.invoke.mock.callCount() > 0)
     })
+
+    it('should assign distinct sequential _trackingId values to cloned blocks', async () => {
+      // Regression: bulk insertMany defeats SpoorTrackingModule's preInsertHook
+      // which assumes each new block is persisted before the next hook runs.
+      // The clone path must pre-allocate _trackingId so cloned blocks don't collide.
+      const BLOCK2_OID = '507f1f77bcf86cd79943a001'
+      const BLOCK3_OID = '507f1f77bcf86cd79943a002'
+
+      const { inst, mongodb } = createCloneInstance()
+      inst.find = mock.fn(async () => [{ _trackingId: 7 }]) // existing max in course
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID },
+        { _id: ART_OID, _type: 'article', _parentId: PAGE_OID, _courseId: COURSE_OID },
+        { _id: BLOCK_OID, _type: 'block', _parentId: ART_OID, _courseId: COURSE_OID, _trackingId: 5 },
+        { _id: BLOCK2_OID, _type: 'block', _parentId: ART_OID, _courseId: COURSE_OID, _trackingId: 6 },
+        { _id: BLOCK3_OID, _type: 'block', _parentId: ART_OID, _courseId: COURSE_OID, _trackingId: 7 }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+
+      const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
+      const blockTrackingIds = inserted.filter(d => d._type === 'block').map(d => d._trackingId)
+      assert.equal(blockTrackingIds.length, 3)
+      for (const id of blockTrackingIds) {
+        assert.equal(typeof id, 'number', `block cloned without numeric _trackingId (got ${id})`)
+      }
+      // all distinct
+      assert.equal(new Set(blockTrackingIds).size, blockTrackingIds.length, 'duplicate _trackingId among cloned blocks')
+      // and continuing past the existing max
+      for (const id of blockTrackingIds) {
+        assert.ok(id > 7, `expected _trackingId > existing max (7), got ${id}`)
+      }
+    })
   })
 
   describe('handleTree', () => {

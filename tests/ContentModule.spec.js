@@ -139,6 +139,47 @@ describe('ContentModule', () => {
     })
   })
 
+  describe('insertRecursive', () => {
+    function createReq ({ rootId, body } = {}) {
+      return {
+        apiData: { query: { rootId }, data: {} },
+        auth: { user: { _id: 'user1' } },
+        body,
+        translate: key => key
+      }
+    }
+
+    function createRecursiveInstance () {
+      const insertCalls = []
+      let id = 0
+      const nextId = () => `id${++id}`
+      const insert = mock.fn(async data => {
+        insertCalls.push(data)
+        return { ...data, _id: nextId(), _courseId: data._courseId ?? nextId() }
+      })
+      return {
+        instance: {
+          insert,
+          findOne: mock.fn(async () => null),
+          updateSortOrder: mock.fn(async () => {}),
+          updateEnabledPlugins: mock.fn(async () => {})
+        },
+        insertCalls
+      }
+    }
+
+    it('should assign _sortOrder to every non-config/course child when creating a new course', async () => {
+      const { instance, insertCalls } = createRecursiveInstance()
+      await ContentModule.prototype.insertRecursive.call(instance, createReq())
+      // payloads: course, config, page, article, block, component
+      const needSortOrder = insertCalls.filter(d => d._type !== 'course' && d._type !== 'config')
+      assert.ok(needSortOrder.length > 0, 'expected at least one child insert')
+      for (const d of needSortOrder) {
+        assert.equal(typeof d._sortOrder, 'number', `${d._type} inserted without numeric _sortOrder`)
+      }
+    })
+  })
+
   describe('update guards', () => {
     // Exercises the guard logic from update() — whether updateSortOrder/updateEnabledPlugins
     // are called based on which fields are in the update data.

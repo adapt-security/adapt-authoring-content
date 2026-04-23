@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb'
 import formatFriendlyId from '../lib/utils/formatFriendlyId.js'
 import parseMaxSeq from '../lib/utils/parseMaxSeq.js'
 
@@ -99,7 +100,9 @@ async function backfillAssetIds (db, log) {
   const ops = []
   for (const doc of docsToUpdate) {
     const docStr = JSON.stringify(doc)
-    const foundIds = assetIdStrings.filter(id => docStr.includes(id))
+    const foundIds = assetIdStrings
+      .filter(id => docStr.includes(id))
+      .map(id => new ObjectId(id))
     ops.push({
       updateOne: {
         filter: { _id: doc._id },

@@ -31,6 +31,7 @@
                         "_sortOrder": { "type": "number" },
                         "title": { "type": "string" },
                         "displayTitle": { "type": "string" },
+                        "_friendlyId": { "type": "string" },
                         "_component": { "type": "string" },
                         "_layout": { "type": "string" },
                         "_menu": { "type": "string" },

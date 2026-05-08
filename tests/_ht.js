@@ -2,7 +2,6 @@ import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
 import ContentModule from '../lib/ContentModule.js'
-import ContentTree from '../lib/ContentTree.js'
 
 const COURSE_ID = '507f1f77bcf86cd799439011'
 

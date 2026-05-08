@@ -366,6 +366,7 @@ describe('ContentModule', () => {
     const COMP_OID = '507f1f77bcf86cd799439055'
     const CONFIG_OID = '507f1f77bcf86cd799439066'
     const PARENT_OID = '507f1f77bcf86cd799439077'
+    const USER_OID = '507f1f77bcf86cd799439088'
 
     function createCloneInstance (collectionOverrides = {}) {
       const insertedDocs = []
@@ -399,7 +400,7 @@ describe('ContentModule', () => {
 
       const tree = new ContentTree([])
       await assert.rejects(
-        () => ContentModule.prototype.clone.call(inst, 'user1', 'missing-id', PARENT_OID, {}, { tree }),
+        () => ContentModule.prototype.clone.call(inst, USER_OID, 'missing-id', PARENT_OID, {}, { tree }),
         (err) => err.code === 'NOT_FOUND'
       )
     })
@@ -412,7 +413,7 @@ describe('ContentModule', () => {
       ])
       inst.findOne = mock.fn(async () => null) // parent lookup returns null
       await assert.rejects(
-        () => ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, 'bad-parent', {}, { tree }),
+        () => ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, 'bad-parent', {}, { tree }),
         (err) => err.code === 'INVALID_PARENT'
       )
     })
@@ -429,7 +430,7 @@ describe('ContentModule', () => {
       ]
       const tree = new ContentTree(items)
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
-      const result = await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, { title: 'Cloned' }, { tree, parent })
+      const result = await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, { title: 'Cloned' }, { tree, parent })
 
       // insertMany should have been called once
       assert.equal(mongodb.collection.insertMany.mock.callCount(), 1)
@@ -438,7 +439,7 @@ describe('ContentModule', () => {
       assert.equal(inserted.length, 4)
       // root payload should have customData applied
       assert.equal(result.title, 'Cloned')
-      assert.equal(result.createdBy, 'user1')
+      assert.equal(result.createdBy.toString(), USER_OID)
     })
 
     it('should clone a course with config', async () => {
@@ -450,7 +451,7 @@ describe('ContentModule', () => {
         { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
       ]
       const tree = new ContentTree(items)
-      const result = await ContentModule.prototype.clone.call(inst, 'user1', COURSE_OID, undefined, {}, { tree })
+      const result = await ContentModule.prototype.clone.call(inst, USER_OID, COURSE_OID, undefined, {}, { tree })
 
       const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
       // course + config + page = 3
@@ -468,7 +469,7 @@ describe('ContentModule', () => {
       ]
       const tree = new ContentTree(items)
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
-      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+      await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, {}, { tree, parent })
 
       const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
       const clonedPage = inserted.find(d => d._type === 'page')
@@ -491,7 +492,7 @@ describe('ContentModule', () => {
       const tree = new ContentTree(items)
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
       await assert.rejects(
-        () => ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent }),
+        () => ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, {}, { tree, parent }),
         { message: 'insert failed' }
       )
       // should attempt cleanup via deleteMany
@@ -507,7 +508,7 @@ describe('ContentModule', () => {
       ]
       const tree = new ContentTree(items)
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
-      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+      await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, {}, { tree, parent })
 
       assert.ok(inst.preCloneHook.invoke.mock.callCount() > 0)
       assert.ok(inst.postCloneHook.invoke.mock.callCount() > 0)
@@ -535,7 +536,7 @@ describe('ContentModule', () => {
       ]
       const tree = new ContentTree(items)
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
-      await ContentModule.prototype.clone.call(inst, 'user1', PAGE_OID, COURSE_OID, {}, { tree, parent })
+      await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, {}, { tree, parent })
 
       const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
       const blockTrackingIds = inserted.filter(d => d._type === 'block').map(d => d._trackingId)

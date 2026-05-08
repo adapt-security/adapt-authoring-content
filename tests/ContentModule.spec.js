@@ -626,4 +626,62 @@ describe('ContentModule', () => {
       assert.equal(next.mock.calls[0].arguments[0].message, 'db error')
     })
   })
+
+  describe('enforceAssetNotInUse', () => {
+    const ASSET_OID = '507f1f77bcf86cd799439020'
+    const COURSE_A_OID = '507f1f77bcf86cd799439001'
+    const COURSE_B_OID = '507f1f77bcf86cd799439002'
+    const RESOURCE_IN_USE = Symbol('RESOURCE_IN_USE')
+
+    function createAssetInst (findResults) {
+      let call = 0
+      return {
+        find: mock.fn(async () => findResults[call++] ?? []),
+        app: { errors: { RESOURCE_IN_USE: { setData: mock.fn(data => ({ symbol: RESOURCE_IN_USE, data })) } } }
+      }
+    }
+
+    it('returns silently when the asset is not referenced by any content', async () => {
+      const inst = createAssetInst([[]])
+      await ContentModule.prototype.enforceAssetNotInUse.call(inst, { _id: ASSET_OID })
+      assert.equal(inst.find.mock.callCount(), 1)
+      assert.equal(inst.app.errors.RESOURCE_IN_USE.setData.mock.callCount(), 0)
+    })
+
+    it('throws RESOURCE_IN_USE with course titles when the asset is in use', async () => {
+      const inst = createAssetInst([
+        [{ _courseId: COURSE_A_OID }, { _courseId: COURSE_B_OID }],
+        [{ title: 'Course A', displayTitle: 'Display A' }, { title: 'Course B' }]
+      ])
+      await assert.rejects(
+        () => ContentModule.prototype.enforceAssetNotInUse.call(inst, { _id: ASSET_OID }),
+        e => e.symbol === RESOURCE_IN_USE && e.data.type === 'asset' && e.data.courses.length === 2 &&
+          e.data.courses.includes('Display A') && e.data.courses.includes('Course B')
+      )
+    })
+
+    it('casts string courseIds to ObjectId for the lookup so titles resolve against ObjectId _ids', async () => {
+      const inst = createAssetInst([
+        [{ _courseId: COURSE_A_OID }],
+        [{ title: 'Course A' }]
+      ])
+      await assert.rejects(() => ContentModule.prototype.enforceAssetNotInUse.call(inst, { _id: ASSET_OID }))
+      const courseLookupQuery = inst.find.mock.calls[1].arguments[0]
+      assert.equal(courseLookupQuery._type, 'course')
+      assert.equal(courseLookupQuery._id.$in.length, 1)
+      // ObjectId cast: not the original string
+      assert.notEqual(courseLookupQuery._id.$in[0], COURSE_A_OID)
+      assert.equal(courseLookupQuery._id.$in[0].toString(), COURSE_A_OID)
+    })
+
+    it('deduplicates courseIds when multiple content docs share a courseId', async () => {
+      const inst = createAssetInst([
+        [{ _courseId: COURSE_A_OID }, { _courseId: COURSE_A_OID }, { _courseId: COURSE_A_OID }],
+        [{ title: 'Course A' }]
+      ])
+      await assert.rejects(() => ContentModule.prototype.enforceAssetNotInUse.call(inst, { _id: ASSET_OID }))
+      const courseLookupQuery = inst.find.mock.calls[1].arguments[0]
+      assert.equal(courseLookupQuery._id.$in.length, 1)
+    })
+  })
 })

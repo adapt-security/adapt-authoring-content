@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "adapt-authoring-api": "^3.0.0",
-    "adapt-authoring-core": "^2.0.0",
+    "adapt-authoring-core": "^3.0.0",
     "adapt-authoring-mongodb": "^3.1.0"
   },
   "peerDependencies": {

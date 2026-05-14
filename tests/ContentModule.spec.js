@@ -1,6 +1,7 @@
 import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 
+import { AbstractApiModule } from 'adapt-authoring-api'
 import ContentModule from '../lib/ContentModule.js'
 import ContentTree from '../lib/ContentTree.js'
 
@@ -683,6 +684,115 @@ describe('ContentModule', () => {
       await assert.rejects(() => ContentModule.prototype.enforceAssetNotInUse.call(inst, { _id: ASSET_OID }))
       const courseLookupQuery = inst.find.mock.calls[1].arguments[0]
       assert.equal(courseLookupQuery._id.$in.length, 1)
+    })
+  })
+
+  describe('delete', () => {
+    const COURSE_OID = '507f1f77bcf86cd799439011'
+    const TARGET_OID = '507f1f77bcf86cd799439012'
+
+    function createDeleteInstance (overrides = {}) {
+      const mongoDeleteMany = mock.fn(async () => {})
+      const postDeleteInvoke = mock.fn(async () => {})
+      const inst = {
+        schemaName: 'content',
+        collectionName: 'content',
+        setDefaultOptions: mock.fn(),
+        findOne: mock.fn(async () => null),
+        postDeleteHook: { invoke: postDeleteInvoke },
+        updateEnabledPlugins: mock.fn(async () => {}),
+        updateSortOrder: mock.fn(async () => {}),
+        deleteCounters: mock.fn(async () => {}),
+        app: { waitForModule: mock.fn(async () => ({ deleteMany: mongoDeleteMany })) },
+        ...overrides
+      }
+      return { inst, mongoDeleteMany, postDeleteInvoke }
+    }
+
+    it('should bulk-delete descendants in one mongodb call and fire postDeleteHook once with the full array', async (t) => {
+      const targetDoc = { _id: TARGET_OID, _type: 'page', _courseId: COURSE_OID }
+      const descendantDocs = Array.from({ length: 5 }, (_, i) => ({
+        _id: `desc${i}`, _parentId: TARGET_OID, _type: 'block', _courseId: COURSE_OID
+      }))
+      const treeItems = [targetDoc, ...descendantDocs]
+
+      const { inst, mongoDeleteMany, postDeleteInvoke } = createDeleteInstance({
+        findOne: mock.fn(async () => targetDoc)
+      })
+
+      // super.find and super.delete are statically bound to AbstractApiModule.prototype
+      // and can't be intercepted via plain-object methods, so swap them at the prototype
+      // for the lifetime of this test (auto-restored by t.mock).
+      t.mock.method(AbstractApiModule.prototype, 'find', async () => treeItems)
+      t.mock.method(AbstractApiModule.prototype, 'delete', async () => {})
+
+      await ContentModule.prototype.delete.call(inst, { _id: TARGET_OID })
+
+      assert.equal(mongoDeleteMany.mock.callCount(), 1, 'mongodb.deleteMany called exactly once')
+      const [collectionName, query] = mongoDeleteMany.mock.calls[0].arguments
+      assert.equal(collectionName, 'content')
+      assert.deepEqual(query, { _id: { $in: descendantDocs.map(d => d._id) } })
+
+      assert.equal(postDeleteInvoke.mock.callCount(), 1, 'postDeleteHook.invoke called exactly once')
+      const hookPayload = postDeleteInvoke.mock.calls[0].arguments[0]
+      assert.equal(hookPayload.length, 5, 'hook receives the full descendant array')
+    })
+
+    it('should not fire postDeleteHook when invokePostHook is false', async (t) => {
+      const targetDoc = { _id: TARGET_OID, _type: 'page', _courseId: COURSE_OID }
+      const descendantDocs = [{ _id: 'desc1', _parentId: TARGET_OID, _type: 'block', _courseId: COURSE_OID }]
+      const { inst, postDeleteInvoke } = createDeleteInstance({
+        findOne: mock.fn(async () => targetDoc)
+      })
+
+      t.mock.method(AbstractApiModule.prototype, 'find', async () => [targetDoc, ...descendantDocs])
+      t.mock.method(AbstractApiModule.prototype, 'delete', async () => {})
+
+      await ContentModule.prototype.delete.call(inst, { _id: TARGET_OID }, { invokePostHook: false })
+
+      assert.equal(postDeleteInvoke.mock.callCount(), 0)
+    })
+  })
+
+  describe('handleClone', () => {
+    const SRC_OID = '507f1f77bcf86cd799439011'
+    const PARENT_OID = '507f1f77bcf86cd799439022'
+    const USER_OID = '507f1f77bcf86cd799439033'
+
+    function createHandleCloneInstance (overrides = {}) {
+      return {
+        requestHook: { invoke: mock.fn(async () => {}) },
+        findOne: mock.fn(async () => ({ _id: SRC_OID })),
+        checkAccess: mock.fn(async () => {}),
+        clone: mock.fn(async () => ({ _id: 'new-id' })),
+        app: { errors: { NOT_FOUND: { setData: () => new Error('NOT_FOUND') } } },
+        ...overrides
+      }
+    }
+
+    function createRes () {
+      const res = {
+        status: mock.fn(() => res),
+        json: mock.fn()
+      }
+      return res
+    }
+
+    it('should invoke requestHook with req before clone runs', async () => {
+      const callOrder = []
+      const requestHookInvoke = mock.fn(async () => { callOrder.push('requestHook') })
+      const clone = mock.fn(async () => { callOrder.push('clone'); return { _id: 'new-id' } })
+      const inst = createHandleCloneInstance({
+        requestHook: { invoke: requestHookInvoke },
+        clone
+      })
+      const req = { body: { _id: SRC_OID, _parentId: PARENT_OID }, auth: { user: { _id: USER_OID } } }
+
+      await ContentModule.prototype.handleClone.call(inst, req, createRes(), mock.fn())
+
+      assert.equal(requestHookInvoke.mock.callCount(), 1, 'requestHook.invoke called once')
+      assert.deepEqual(requestHookInvoke.mock.calls[0].arguments, [req], 'hook receives the req')
+      assert.deepEqual(callOrder, ['requestHook', 'clone'], 'requestHook fires before clone')
     })
   })
 })

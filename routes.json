@@ -37,6 +37,7 @@
                         "_menu": { "type": "string" },
                         "_theme": { "type": "string" },
                         "_enabledPlugins": { "type": "array", "items": { "type": "string" } },
+                        "_colorLabel": { "type": "string" },
                         "updatedAt": { "type": "string", "format": "date-time" },
                         "_children": { "type": "array", "items": { "type": "string" } }
                       }

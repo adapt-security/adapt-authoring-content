@@ -517,15 +517,14 @@ describe('ContentModule', () => {
       assert.ok(inst.postInsertHook.invoke.mock.callCount() > 0)
     })
 
-    it('should assign distinct sequential _trackingId values to cloned blocks', async () => {
-      // Regression: bulk insertMany defeats SpoorTrackingModule's preInsertHook
-      // which assumes each new block is persisted before the next hook runs.
-      // The clone path must pre-allocate _trackingId so cloned blocks don't collide.
+    it('should delegate _trackingId assignment to preInsertHook (clone no longer allocates them)', async () => {
+      // Tracking IDs are owned by the spoortracking module, which taps preInsertHook. clone must
+      // fire that hook once per payload (so each cloned block can be assigned an id) and must not
+      // assign _trackingId itself. With no observer attached here, payloads pass through untouched.
       const BLOCK2_OID = '507f1f77bcf86cd79943a001'
       const BLOCK3_OID = '507f1f77bcf86cd79943a002'
 
       const { inst, mongodb } = createCloneInstance()
-      inst.find = mock.fn(async () => [{ _trackingId: 7 }]) // existing max in course
 
       const items = [
         { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
@@ -539,18 +538,16 @@ describe('ContentModule', () => {
       const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
       await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, {}, { tree, parent })
 
+      // preInsertHook fired once per cloned payload — the seam the spoortracking observer uses.
+      // Cloning the page clones page + article + 3 blocks (5 items); the course is the source.
+      assert.equal(inst.preInsertHook.invoke.mock.callCount(), 5)
+      // every payload passed to the hook is a block/page/etc, and a block payload is present
+      const hookedTypes = inst.preInsertHook.invoke.mock.calls.map(c => c.arguments[0]._type)
+      assert.ok(hookedTypes.includes('block'))
+      // clone itself assigned nothing — block payloads still carry the (now irrelevant) source ids
       const inserted = mongodb.collection.insertMany.mock.calls[0].arguments[0]
       const blockTrackingIds = inserted.filter(d => d._type === 'block').map(d => d._trackingId)
-      assert.equal(blockTrackingIds.length, 3)
-      for (const id of blockTrackingIds) {
-        assert.equal(typeof id, 'number', `block cloned without numeric _trackingId (got ${id})`)
-      }
-      // all distinct
-      assert.equal(new Set(blockTrackingIds).size, blockTrackingIds.length, 'duplicate _trackingId among cloned blocks')
-      // and continuing past the existing max
-      for (const id of blockTrackingIds) {
-        assert.ok(id > 7, `expected _trackingId > existing max (7), got ${id}`)
-      }
+      assert.deepEqual(blockTrackingIds.sort(), [5, 6, 7])
     })
   })
 

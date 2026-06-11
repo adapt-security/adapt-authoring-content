@@ -110,6 +110,29 @@
           }
         }
       }
+    },
+    {
+      "route": "/assetusage",
+      "handlers": { "post": "handleAssetUsage" },
+      "permissions": { "post": ["read:${scope}"] },
+      "meta": {
+        "post": {
+          "summary": "Count how many distinct courses each asset is used in",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "assetIds": { "type": "array", "items": { "type": "string" }, "description": "Optional list of asset _ids to scope the counts to. Omit to count all assets." }
+                  }
+                }
+              }
+            }
+          },
+          "responses": { "200": { "description": "Object mapping asset _id to the number of distinct courses referencing it; assets with no usage are omitted" } }
+        }
+      }
     }
   ]
 }

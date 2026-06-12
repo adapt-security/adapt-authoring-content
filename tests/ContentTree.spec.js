@@ -227,4 +227,53 @@ describe('ContentTree', () => {
       assert.deepEqual(tree.getComponentNames(), [])
     })
   })
+
+  describe('getEmptyContainers', () => {
+    it('should return container items that have no children', () => {
+      // in the shared fixture the menu (id4) and second article (id6) are childless
+      const empty = new ContentTree(items).getEmptyContainers()
+      assert.deepEqual(empty.map(i => i._id.toString()).sort(), ['id4', 'id6'])
+    })
+
+    it('should never flag components (leaf nodes)', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'block', _parentId: makeId(99) },
+        { _id: makeId(2), _type: 'component', _parentId: makeId(1), _component: 'adapt-contrib-text' }
+      ])
+      assert.equal(tree.getEmptyContainers().length, 0)
+    })
+
+    it('should never flag config (childless root)', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'config', _courseId: 'c1' },
+        { _id: makeId(3), _type: 'page', _parentId: makeId(1) },
+        { _id: makeId(4), _type: 'article', _parentId: makeId(3) },
+        { _id: makeId(5), _type: 'block', _parentId: makeId(4) },
+        { _id: makeId(6), _type: 'component', _parentId: makeId(5), _component: 'adapt-contrib-text' }
+      ])
+      assert.deepEqual(tree.getEmptyContainers(), [])
+    })
+
+    it('should flag a block with no components', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'article', _parentId: makeId(99) },
+        { _id: makeId(2), _type: 'block', _parentId: makeId(1) }
+      ])
+      const empty = tree.getEmptyContainers()
+      assert.equal(empty.length, 1)
+      assert.equal(empty[0]._id.toString(), 'id2')
+    })
+
+    it('should flag a course with no children', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' }
+      ])
+      assert.deepEqual(tree.getEmptyContainers().map(i => i._type), ['course'])
+    })
+
+    it('should return empty array for an empty tree', () => {
+      assert.deepEqual(new ContentTree([]).getEmptyContainers(), [])
+    })
+  })
 })

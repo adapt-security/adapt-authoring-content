@@ -21,5 +21,12 @@
     },
     "description": "Resource is currently being used in courses",
     "statusCode": 400
+  },
+  "EMPTY_CONTAINERS": {
+    "data": {
+      "items": "The childless content items blocking the build"
+    },
+    "description": "Course cannot be built: one or more pages, articles or blocks have no content",
+    "statusCode": 400
   }
 }

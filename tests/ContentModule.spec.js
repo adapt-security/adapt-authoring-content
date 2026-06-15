@@ -384,6 +384,7 @@ describe('ContentModule', () => {
         }),
         getSchema: mock.fn(async () => ({})),
         updateEnabledPlugins: mock.fn(async () => {}),
+        updateSortOrder: mock.fn(async () => {}),
         preCloneHook: { invoke: mock.fn(async () => {}) },
         preInsertHook: { invoke: mock.fn(async () => {}) },
         postInsertHook: { invoke: mock.fn(async () => {}) },
@@ -458,6 +459,25 @@ describe('ContentModule', () => {
       // course + config + page = 3
       assert.equal(inserted.length, 3)
       assert.equal(result._type, 'course')
+    })
+
+    it('should renumber siblings for the cloned root so it lands at its _sortOrder', async () => {
+      const { inst } = createCloneInstance()
+
+      const items = [
+        { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID },
+        { _id: PAGE_OID, _type: 'page', _parentId: COURSE_OID, _courseId: COURSE_OID }
+      ]
+      const tree = new ContentTree(items)
+      const parent = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      const result = await ContentModule.prototype.clone.call(inst, USER_OID, PAGE_OID, COURSE_OID, { _sortOrder: 1 }, { tree, parent })
+
+      assert.equal(inst.updateSortOrder.mock.callCount(), 1)
+      const [item, updateData] = inst.updateSortOrder.mock.calls[0].arguments
+      // called with the root payload (truthy updateData triggers the splice/renumber path)
+      assert.equal(item, result)
+      assert.ok(updateData)
+      assert.equal(item._sortOrder, 1)
     })
 
     it('should remap parent IDs correctly', async () => {

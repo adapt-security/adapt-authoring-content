@@ -572,17 +572,24 @@ describe('ContentModule', () => {
   })
 
   describe('handleTree', () => {
-    it('should return 304 when content has not been modified', async () => {
-      const lastModified = new Date('2025-01-01T00:00:00Z')
+    it('should return 304 when the ETag matches (content + shape unchanged)', async () => {
       const inst = createInstance({
-        findOne: mock.fn(async () => ({ updatedAt: lastModified }))
+        findOne: mock.fn(async () => ({ updatedAt: new Date('2025-01-01T00:00:00Z') })),
+        find: mock.fn(async () => [])
       })
+      // capture the current ETag from a fresh request...
+      let etag
+      const firstRes = { set: mock.fn((k, v) => { if (k === 'ETag') etag = v }), json: mock.fn() }
+      await ContentModule.prototype.handleTree.call(inst, { auth: { isSuper: true }, apiData: { query: { _courseId: COURSE_ID } }, headers: {} }, firstRes, mock.fn())
+      assert.match(etag, /^W\/".+"$/)
+
+      // ...then a conditional request carrying it gets a 304
       let statusCode
       let ended = false
       const req = {
         auth: { isSuper: true },
         apiData: { query: { _courseId: COURSE_ID } },
-        headers: { 'if-modified-since': new Date('2025-01-02T00:00:00Z').toUTCString() }
+        headers: { 'if-none-match': etag }
       }
       const res = {
         status: mock.fn(function (code) { statusCode = code; return this }),
@@ -592,6 +599,31 @@ describe('ContentModule', () => {
       await ContentModule.prototype.handleTree.call(inst, req, res, next)
       assert.equal(statusCode, 304)
       assert.equal(ended, true)
+      assert.equal(next.mock.callCount(), 0)
+    })
+
+    it('should serve the tree (not 304) when the ETag no longer matches the response shape', async () => {
+      // a cached ETag from before a treeFields change must not short-circuit to
+      // 304 — otherwise the new field stays missing for unedited courses
+      const inst = createInstance({
+        findOne: mock.fn(async () => ({ updatedAt: new Date('2025-01-01T00:00:00Z') })),
+        find: mock.fn(async () => [{ _id: COURSE_ID, _type: 'course', _courseId: COURSE_ID }])
+      })
+      let statusCode
+      const req = {
+        auth: { isSuper: true },
+        apiData: { query: { _courseId: COURSE_ID } },
+        headers: { 'if-none-match': 'W/"1735689600000-deadbeef"' }
+      }
+      const res = {
+        status: mock.fn(function (code) { statusCode = code; return this }),
+        set: mock.fn(),
+        json: mock.fn()
+      }
+      const next = mock.fn()
+      await ContentModule.prototype.handleTree.call(inst, req, res, next)
+      assert.equal(statusCode, undefined, 'did not 304')
+      assert.equal(res.json.mock.callCount(), 1, 'served the tree')
       assert.equal(next.mock.callCount(), 0)
     })
 
@@ -612,9 +644,9 @@ describe('ContentModule', () => {
         headers: {}
       }
       let responseData
-      let lastModifiedHeader
+      let etagHeader
       const res = {
-        set: mock.fn((key, val) => { if (key === 'Last-Modified') lastModifiedHeader = val }),
+        set: mock.fn((key, val) => { if (key === 'ETag') etagHeader = val }),
         json: mock.fn((data) => { responseData = data })
       }
       const next = mock.fn()
@@ -631,8 +663,8 @@ describe('ContentModule', () => {
       // article should have no children
       const art = responseData.find(i => i._id === 'art1')
       assert.deepEqual(art._children, [])
-      // Last-Modified header should be set
-      assert.equal(lastModifiedHeader, lastModified.toUTCString())
+      // ETag header should be set
+      assert.match(etagHeader, /^W\/".+"$/)
     })
 
     it('should call next on error', async () => {

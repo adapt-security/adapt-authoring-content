@@ -133,6 +133,18 @@
           "responses": { "200": { "description": "Object mapping asset _id to the number of distinct courses referencing it; assets with no usage are omitted" } }
         }
       }
+    },
+    {
+      "route": "/assetusage/:_id",
+      "handlers": { "get": "handleAssetCourses" },
+      "permissions": { "get": ["read:${scope}"] },
+      "meta": {
+        "get": {
+          "summary": "List the courses that reference an asset",
+          "parameters": [{ "name": "_id", "in": "path", "description": "The asset _id", "required": true }],
+          "responses": { "200": { "description": "Array of { _id, title } for each course referencing the asset" } }
+        }
+      }
     }
   ]
 }

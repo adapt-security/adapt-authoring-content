@@ -790,6 +790,127 @@ describe('ContentModule', () => {
     })
   })
 
+  describe('validateParent', () => {
+    const PARENT = '507f1f77bcf86cd799439011'
+    const COURSE = '507f1f77bcf86cd799439022'
+    const INVALID = Symbol('INVALID_PARENT')
+
+    function createInst (parentDoc) {
+      return {
+        findOne: mock.fn(async () => parentDoc),
+        app: { errors: { INVALID_PARENT: { setData: mock.fn(data => Object.assign(new Error('INVALID_PARENT'), { symbol: INVALID, data })) } } }
+      }
+    }
+    const run = (inst, data) => ContentModule.prototype.validateParent.call(inst, data)
+
+    it('is a no-op when no _parentId is set', async () => {
+      const inst = createInst(null)
+      await run(inst, { _type: 'course' })
+      assert.equal(inst.findOne.mock.callCount(), 0)
+    })
+
+    it('passes when the parent exists in the same course', async () => {
+      const inst = createInst({ _id: PARENT, _courseId: COURSE })
+      await run(inst, { _parentId: PARENT, _courseId: COURSE })
+      assert.equal(inst.app.errors.INVALID_PARENT.setData.mock.callCount(), 0)
+    })
+
+    it('throws INVALID_PARENT when the parent does not exist', async () => {
+      const inst = createInst(null)
+      await assert.rejects(() => run(inst, { _parentId: 'gone', _courseId: COURSE }),
+        e => e.symbol === INVALID && e.data.parentId === 'gone')
+    })
+
+    it('throws INVALID_PARENT when the parent belongs to another course', async () => {
+      const inst = createInst({ _id: PARENT, _courseId: 'othercourse' })
+      await assert.rejects(() => run(inst, { _parentId: PARENT, _courseId: COURSE }),
+        e => e.symbol === INVALID)
+    })
+
+    it('passes existence-only when data carries no _courseId to cross-check', async () => {
+      const inst = createInst({ _id: PARENT, _courseId: COURSE })
+      await run(inst, { _parentId: PARENT })
+      assert.equal(inst.app.errors.INVALID_PARENT.setData.mock.callCount(), 0)
+    })
+  })
+
+  describe('enforceNoEmptyContainers', () => {
+    const COURSE = '507f1f77bcf86cd799439011'
+    const EMPTY = Symbol('EMPTY_CONTAINERS')
+
+    function createInst (items) {
+      const deleteMany = mock.fn(async () => {})
+      const inst = {
+        collectionName: 'content',
+        find: mock.fn(async () => items),
+        mongodb: { deleteMany },
+        log: mock.fn(),
+        app: { errors: { EMPTY_CONTAINERS: { setData: mock.fn(data => Object.assign(new Error('EMPTY'), { symbol: EMPTY, data })) } } }
+      }
+      return { inst, deleteMany }
+    }
+
+    const run = (inst, build = { courseId: COURSE }) =>
+      ContentModule.prototype.enforceNoEmptyContainers.call(inst, build)
+
+    it('passes silently for a fully connected, populated course', async () => {
+      const { inst, deleteMany } = createInst([
+        { _id: 'c', _type: 'course' },
+        { _id: 'p', _type: 'page', _parentId: 'c' },
+        { _id: 'a', _type: 'article', _parentId: 'p' },
+        { _id: 'b', _type: 'block', _parentId: 'a' },
+        { _id: 'cmp', _type: 'component', _parentId: 'b', _component: 'adapt-contrib-text' }
+      ])
+      await run(inst)
+      assert.equal(deleteMany.mock.callCount(), 0)
+      assert.equal(inst.app.errors.EMPTY_CONTAINERS.setData.mock.callCount(), 0)
+    })
+
+    it('prunes orphans and does not block when no reachable container is empty', async () => {
+      const { inst, deleteMany } = createInst([
+        { _id: 'c', _type: 'course' },
+        { _id: 'p', _type: 'page', _parentId: 'c' },
+        { _id: 'a', _type: 'article', _parentId: 'p' },
+        { _id: 'b', _type: 'block', _parentId: 'a' },
+        { _id: 'cmp', _type: 'component', _parentId: 'b', _component: 'adapt-contrib-text' },
+        { _id: 'orphan', _type: 'block', _parentId: 'gone', title: 'Block title' }
+      ])
+      const build = { courseId: COURSE }
+      await run(inst, build)
+      assert.equal(deleteMany.mock.callCount(), 1)
+      assert.deepEqual(deleteMany.mock.calls[0].arguments, ['content', { _id: { $in: ['orphan'] } }])
+      assert.equal(build.prunedOrphans, 1)
+      assert.equal(inst.app.errors.EMPTY_CONTAINERS.setData.mock.callCount(), 0)
+    })
+
+    it('blocks on a reachable empty container, surfacing _parentId', async () => {
+      const { inst, deleteMany } = createInst([
+        { _id: 'c', _type: 'course' },
+        { _id: 'p', _type: 'page', _parentId: 'c' },
+        { _id: 'a', _type: 'article', _parentId: 'p', title: 'Empty article' }
+      ])
+      await assert.rejects(() => run(inst), e =>
+        e.symbol === EMPTY &&
+        e.data.items.length === 1 &&
+        e.data.items[0]._id === 'a' &&
+        e.data.items[0]._parentId === 'p')
+      assert.equal(deleteMany.mock.callCount(), 0)
+    })
+
+    it('prunes orphans and still blocks on a separate reachable empty', async () => {
+      const { inst, deleteMany } = createInst([
+        { _id: 'c', _type: 'course' },
+        { _id: 'p', _type: 'page', _parentId: 'c' },
+        { _id: 'a', _type: 'article', _parentId: 'p', title: 'Empty article' },
+        { _id: 'orphan', _type: 'block', _parentId: 'gone' }
+      ])
+      await assert.rejects(() => run(inst), e =>
+        e.data.items.length === 1 && e.data.items[0]._id === 'a')
+      assert.equal(deleteMany.mock.callCount(), 1)
+      assert.deepEqual(deleteMany.mock.calls[0].arguments[1], { _id: { $in: ['orphan'] } })
+    })
+  })
+
   describe('delete', () => {
     const COURSE_OID = '507f1f77bcf86cd799439011'
     const TARGET_OID = '507f1f77bcf86cd799439012'

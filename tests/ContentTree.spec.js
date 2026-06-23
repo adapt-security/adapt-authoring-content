@@ -201,6 +201,85 @@ describe('ContentTree', () => {
     })
   })
 
+  describe('isReachable', () => {
+    it('should return true for items whose chain reaches the course', () => {
+      const tree = new ContentTree(items)
+      assert.equal(tree.isReachable('id9'), true)
+      assert.equal(tree.isReachable('id5'), true)
+      assert.equal(tree.isReachable('id1'), true)
+    })
+
+    it('should return false when a parent is missing from the tree', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'block', _parentId: makeId(99) }
+      ])
+      assert.equal(tree.isReachable('id2'), false)
+    })
+
+    it('should return false for non-existent ids', () => {
+      const tree = new ContentTree(items)
+      assert.equal(tree.isReachable('missing'), false)
+    })
+
+    it('should return false when there is no course root', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'page', _parentId: makeId(2) },
+        { _id: makeId(2), _type: 'menu' }
+      ])
+      assert.equal(tree.isReachable('id1'), false)
+    })
+
+    it('should not loop forever on a cycle', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'page', _parentId: makeId(3) },
+        { _id: makeId(3), _type: 'article', _parentId: makeId(2) }
+      ])
+      assert.equal(tree.isReachable('id2'), false)
+    })
+  })
+
+  describe('getUnreachableItems', () => {
+    it('should return [] for a fully connected course', () => {
+      assert.deepEqual(new ContentTree(items).getUnreachableItems(), [])
+    })
+
+    it('should return an orphaned block whose parent article was deleted', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'page', _parentId: makeId(1) },
+        { _id: makeId(3), _type: 'block', _parentId: makeId(99) }
+      ])
+      const orphans = tree.getUnreachableItems()
+      assert.deepEqual(orphans.map(i => i._id.toString()), ['id3'])
+    })
+
+    it('should return the whole orphaned subtree, not just childless items', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'article', _parentId: makeId(99) },
+        { _id: makeId(3), _type: 'block', _parentId: makeId(2) }
+      ])
+      assert.deepEqual(tree.getUnreachableItems().map(i => i._id.toString()).sort(), ['id2', 'id3'])
+    })
+
+    it('should never flag course or config', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'course' },
+        { _id: makeId(2), _type: 'config', _courseId: 'c1' }
+      ])
+      assert.deepEqual(tree.getUnreachableItems(), [])
+    })
+
+    it('should return [] when the tree has no course node', () => {
+      const tree = new ContentTree([
+        { _id: makeId(1), _type: 'block', _parentId: makeId(99) }
+      ])
+      assert.deepEqual(tree.getUnreachableItems(), [])
+    })
+  })
+
   describe('getComponentNames', () => {
     it('should return unique component names', () => {
       const tree = new ContentTree(items)

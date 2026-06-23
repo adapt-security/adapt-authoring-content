@@ -75,7 +75,12 @@ Key methods:
 | `getAncestors(itemId)` | parent chain upward, O(depth) |
 | `getSiblings(itemId)` | siblings excluding self |
 | `getEmptyContainers()` | childless non-`component`/non-`config` items |
+| `isReachable(itemId)` | whether the `_parentId` chain ends at the course root |
+| `getUnreachableItems()` | orphans — items whose chain never reaches the course |
 | `getComponentNames()` | unique `_component` values in the course |
+
+`getUnreachableItems` returns `[]` when the tree has no `course` node (reachability
+is undecidable without a root).
 
 The module builds a `ContentTree` internally for delete, clone, sort-order and
 plugin-list maintenance — anywhere it needs the whole course in memory.
@@ -114,11 +119,16 @@ doesn't leak existence; supers are exempt.
 ## CRUD, scaffold, clone, reorder
 
 ### insert
-On insert (`insert`): a `_friendlyId` is generated if absent, `_assetIds` is
-computed if absent, then `super.insert` runs. A new `course` gets its `_courseId`
+On insert (`insert`): `validateParent` runs first — a `_parentId` that doesn't
+resolve to an existing item in the same course throws `INVALID_PARENT` (400),
+which stops orphans being created by a delete/insert race or a stale client
+reference. Then a `_friendlyId` is generated if absent, `_assetIds` is
+computed if absent, and `super.insert` runs. A new `course` gets its `_courseId`
 written back. Otherwise `updateSortOrder` and `updateEnabledPlugins` run unless
 disabled via the `updateSortOrder: false` / `updateEnabledPlugins: false`
 options. A duplicate-key error is rethrown as `DUPL_FRIENDLY_ID` (409).
+`update` applies the same `validateParent` check when a write reparents an item
+(`_parentId` present in the update data).
 
 ### insertRecursive
 `POST /api/content/insertrecursive` (`handleInsertRecursive` → `insertRecursive`)
@@ -220,9 +230,20 @@ schemas of enabled plugins; built schemas are cached per
 
 When `adaptframework` is available, the module taps its `preBuildHook` with
 `enforceNoEmptyContainers` (`init`). This builds a `ContentTree` for the course
-and calls `getEmptyContainers()`; if any non-`component`, non-`config` item has
-no children (an empty page/article/block, or empty menu/course) it throws
-`EMPTY_CONTAINERS` (400) listing the offending items, blocking the build.
+(via the same flat `_courseId` query the build itself uses) and:
+
+1. **Prunes orphans.** `getUnreachableItems()` returns items whose `_parentId`
+   chain never reaches the course root — left behind by an interrupted delete,
+   invisible in the editor (which only renders the reachable tree) yet still
+   carried into the build, where they break it. These are deleted and the count
+   is recorded on `build.prunedOrphans` so the caller can surface it; a `warn`
+   is logged with the pruned `_id`s.
+2. **Blocks on genuine gaps.** Among the remaining reachable items, any
+   non-`component`, non-`config` container with no children (an empty
+   page/article/block, or empty menu/course) throws `EMPTY_CONTAINERS` (400).
+   The error data lists each offending item's `_id`, `_type`, `title` and
+   `_parentId`.
+
 `content` depends on `adaptframework`'s hook (not vice-versa), so the tap is
 deferred via `waitForModule(...).then(...)` rather than awaited in `init`.
 

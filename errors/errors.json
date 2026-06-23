@@ -24,7 +24,7 @@
   },
   "EMPTY_CONTAINERS": {
     "data": {
-      "items": "The childless content items blocking the build"
+      "items": "The childless content items blocking the build (each with _id, _type, title and _parentId)"
     },
     "description": "Course cannot be built: one or more pages, articles or blocks have no content",
     "statusCode": 400

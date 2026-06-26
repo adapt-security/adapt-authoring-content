@@ -3,9 +3,20 @@ import formatFriendlyId from '../lib/utils/formatFriendlyId.js'
 import parseMaxSeq from '../lib/utils/parseMaxSeq.js'
 
 export default function (migration) {
-  migration.describe('Backfill _friendlyId and _assetIds on existing content documents')
+  migration.describe('Backfill _friendlyId and _assetIds on existing content documents, and drop the removed courseassets collection')
   migration.runCommand(backfillFriendlyIds)
   migration.runCommand(backfillAssetIds)
+  migration.runCommand(dropCourseassets)
+}
+
+async function dropCourseassets (db, log) {
+  const exists = await db.listCollections({ name: 'courseassets' }).hasNext()
+  if (!exists) {
+    log('info', 'migrations', 'No courseassets collection found, skipping drop')
+    return
+  }
+  await db.dropCollection('courseassets')
+  log('info', 'migrations', 'Dropped courseassets collection')
 }
 
 async function backfillFriendlyIds (db, log) {

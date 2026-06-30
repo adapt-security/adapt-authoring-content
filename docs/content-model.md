@@ -221,10 +221,17 @@ affected content types (`menu`/`page` for `contentobject`-targeted schemas) to
 apply their schema defaults. It runs on insert/clone and on updates that touch
 `_component`, `_menu`, `_theme` or `_enabledPlugins`.
 
-`getSchema` reads `config._enabledPlugins` for the course so it only merges the
-schemas of enabled plugins; built schemas are cached per
-`schemaName + enabledPlugins` key (`_schemaCache`), cleared on
-`jsonschema.registerSchemasHook`.
+`getSchema` resolves the enabled-plugin set for the course from its `config`
+document (looked up by `_courseId`) so it only merges the schemas of enabled
+plugins; built schemas are cached per `schemaName + enabledPlugins` key
+(`_schemaCache`), cleared on `jsonschema.registerSchemasHook`.
+
+When the course has no persisted `config`, `getSchema` falls back to an
+`_enabledPlugins` array supplied directly on the data, letting a caller define the
+plugin schema set explicitly — e.g. validating content against a specific set via
+`POST /validate` before the course/config is persisted. Resolution is gated on
+`_courseId` being present, and a persisted `config._enabledPlugins` always takes
+precedence over a supplied one.
 
 ## Build-time validation
 

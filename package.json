@@ -11,7 +11,7 @@
     "test": "node --test 'tests/**/*.spec.js'"
   },
   "dependencies": {
-    "adapt-authoring-api": "^3.7.0",
+    "adapt-authoring-api": "^4.0.1",
     "adapt-authoring-core": "^3.0.0",
     "adapt-authoring-mongodb": "^3.1.0"
   },

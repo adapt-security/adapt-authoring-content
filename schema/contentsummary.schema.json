@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$anchor": "contentsummary",
+  "description": "Tracks precomputed summary cells surfaced per component on the course structure page",
+  "$merge": {
+    "with": {
+      "properties": {
+        "_summary": {
+          "type": "array",
+          "default": [],
+          "_adapt": { "editorOnly": true },
+          "_backboneForms": { "showInUi": false }
+        }
+      }
+    }
+  }
+}

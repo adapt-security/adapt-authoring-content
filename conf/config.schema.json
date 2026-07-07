@@ -11,6 +11,23 @@
       "description": "Maximum page size",
       "type": "number",
       "default": 500
+    },
+    "summaryFields": {
+      "description": "Per-component map of field selectors used to build the structure-page summary. Keyed by component name; each value is an ordered list of dot-path selectors (array segments use []). Components not listed fall back to schema annotations then 'body'.",
+      "type": "object",
+      "default": {
+        "text": ["body"],
+        "graphic": ["_graphic.src"],
+        "hotgraphic": ["_graphic.src", "_items[].title"],
+        "narrative": ["_items[].body"],
+        "media": ["body"],
+        "mcq": ["body", "_items[].text"],
+        "gmcq": ["body", "_items[].text"],
+        "matching": ["body"],
+        "textinput": ["body"],
+        "accordion": ["_items[].title"],
+        "blank": []
+      }
     }
   }
 }

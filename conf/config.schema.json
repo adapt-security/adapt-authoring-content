@@ -13,20 +13,20 @@
       "default": 500
     },
     "summaryFields": {
-      "description": "Per-component map of field selectors used to build the structure-page summary. Keyed by component name; each value is an ordered list of dot-path selectors (array segments use []). Components not listed fall back to schema annotations then 'body'.",
+      "description": "Per-component map of field selectors used to build the structure-page summary. Keyed by the component's full _component name (e.g. adapt-contrib-mcq); each value is an ordered list of dot-path selectors (array segments use []). Components not listed fall back to schema annotations then 'body'.",
       "type": "object",
       "default": {
-        "text": ["body"],
-        "graphic": ["_graphic.src"],
-        "hotgraphic": ["_graphic.src", "_items[].title"],
-        "narrative": ["_items[].body"],
-        "media": ["body"],
-        "mcq": ["body", "_items[].text"],
-        "gmcq": ["body", "_items[].text"],
-        "matching": ["body"],
-        "textinput": ["body"],
-        "accordion": ["_items[].title"],
-        "blank": []
+        "adapt-contrib-text": ["body"],
+        "adapt-contrib-graphic": ["_graphic.large"],
+        "adapt-contrib-hotgraphic": ["_graphic.large", "_items[].title"],
+        "adapt-contrib-narrative": ["_items[].body"],
+        "adapt-contrib-media": ["body"],
+        "adapt-contrib-mcq": ["body", "_items[].text"],
+        "adapt-contrib-gmcq": ["body", "_items[].text"],
+        "adapt-contrib-matching": ["body"],
+        "adapt-contrib-textinput": ["body"],
+        "adapt-contrib-accordion": ["_items[].title"],
+        "adapt-contrib-blank": []
       }
     }
   }

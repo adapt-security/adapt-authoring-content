@@ -679,12 +679,12 @@ describe('ContentModule', () => {
       assert.equal(next.mock.calls[0].arguments[0].message, 'db error')
     })
 
-    it('should run the per-item access check for non-super users and return the tree when allowed', async () => {
+    it('should run the additive access check for non-super users and return the tree when allowed', async () => {
       const lastModified = new Date('2025-01-15T00:00:00Z')
       const course = { _id: COURSE_ID, _type: 'course', updatedAt: lastModified }
-      const accessCheckHook = { hasObservers: true, invoke: mock.fn(async () => [true]) }
+      const checkAccess = mock.fn(async () => course)
       const inst = createInstance({
-        accessCheckHook,
+        checkAccess,
         findOne: mock.fn(async () => course),
         find: mock.fn(async () => [{ _id: COURSE_ID, _type: 'course', _courseId: COURSE_ID }])
       })
@@ -693,16 +693,16 @@ describe('ContentModule', () => {
       const next = mock.fn()
       await ContentModule.prototype.handleTree.call(inst, req, res, next)
 
-      assert.equal(accessCheckHook.invoke.mock.callCount(), 1, 'access check invoked')
-      assert.deepEqual(accessCheckHook.invoke.mock.calls[0].arguments, [req, course], 'check receives req + the course')
+      assert.equal(checkAccess.mock.callCount(), 1, 'access check invoked')
+      assert.deepEqual(checkAccess.mock.calls[0].arguments, [req, course], 'check receives req + the course')
       assert.equal(inst.find.mock.callCount(), 1)
       assert.equal(next.mock.callCount(), 0)
     })
 
     it('should 404 (not leak existence) when the access check denies the course', async () => {
-      const accessCheckHook = { hasObservers: true, invoke: mock.fn(async () => [false]) }
+      const checkAccess = mock.fn(async () => { throw new Error('UNAUTHORISED') })
       const inst = createInstance({
-        accessCheckHook,
+        checkAccess,
         findOne: mock.fn(async () => ({ _id: COURSE_ID, _type: 'course', updatedAt: new Date() })),
         app: { errors: { NOT_FOUND: { setData: () => new Error('NOT_FOUND') } } }
       })
@@ -716,9 +716,9 @@ describe('ContentModule', () => {
     })
 
     it('should skip the access check for super users', async () => {
-      const accessCheckHook = { hasObservers: true, invoke: mock.fn(async () => [false]) }
+      const checkAccess = mock.fn(async () => { throw new Error('should not run for super') })
       const inst = createInstance({
-        accessCheckHook,
+        checkAccess,
         findOne: mock.fn(async () => ({ _id: COURSE_ID, _type: 'course', updatedAt: new Date('2025-01-15T00:00:00Z') })),
         find: mock.fn(async () => [])
       })
@@ -727,7 +727,7 @@ describe('ContentModule', () => {
       const next = mock.fn()
       await ContentModule.prototype.handleTree.call(inst, req, res, next)
 
-      assert.equal(accessCheckHook.invoke.mock.callCount(), 0, 'super bypasses the access check')
+      assert.equal(checkAccess.mock.callCount(), 0, 'super bypasses the access check')
       assert.equal(next.mock.callCount(), 0)
     })
   })

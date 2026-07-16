@@ -141,9 +141,9 @@ describe('ContentModule', () => {
   })
 
   describe('insertRecursive', () => {
-    function createReq ({ rootId, body } = {}) {
+    function createReq ({ rootId, body, data = {} } = {}) {
       return {
-        apiData: { query: { rootId }, data: {} },
+        apiData: { query: { rootId }, data },
         auth: { user: { _id: 'user1' } },
         body,
         translate: key => key
@@ -178,6 +178,23 @@ describe('ContentModule', () => {
       for (const d of needSortOrder) {
         assert.equal(typeof d._sortOrder, 'number', `${d._type} inserted without numeric _sortOrder`)
       }
+    })
+
+    it('should set updatedBy on every document created for a new course', async () => {
+      const { instance, insertCalls } = createRecursiveInstance()
+      await ContentModule.prototype.insertRecursive.call(instance, createReq())
+      for (const d of insertCalls) {
+        assert.equal(d.updatedBy, 'user1', `${d._type} inserted without updatedBy`)
+      }
+    })
+
+    it('should override a client-supplied updatedBy/createdBy on the new course with the acting user', async () => {
+      const { instance, insertCalls } = createRecursiveInstance()
+      await ContentModule.prototype.insertRecursive.call(instance, createReq({ data: { updatedBy: '', createdBy: 'someone-else', title: 'My course' } }))
+      const course = insertCalls.find(d => d._type === 'course')
+      assert.equal(course.createdBy, 'user1')
+      assert.equal(course.updatedBy, 'user1')
+      assert.equal(course.title, 'My course')
     })
   })
 

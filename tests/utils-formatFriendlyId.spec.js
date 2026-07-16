@@ -23,6 +23,14 @@ describe('formatFriendlyId', () => {
     })
   })
 
+  describe('missing type', () => {
+    for (const _type of [undefined, null, '']) {
+      it(`throws for _type ${JSON.stringify(_type)}`, () => {
+        assert.throws(() => formatFriendlyId(_type, 1), /requires a _type/)
+      })
+    }
+  })
+
   describe('other types', () => {
     const cases = [
       { _type: 'page', count: 1, expected: 'p-1' },

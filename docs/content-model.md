@@ -96,11 +96,12 @@ Projected fields (`treeFields` in `handleTree`):
 ```
 _id, _parentId, _courseId, _type, _sortOrder, title, displayTitle,
 _friendlyId, _component, _layout, _menu, _theme, _enabledPlugins,
-_colorLabel, _language, heroImage, updatedAt
+_colorLabel, _language, heroImage, _summary, _assetIds, updatedAt
 ```
 
 Each returned item also carries a `_children` array of child `_id`s, computed
-from the in-memory tree.
+from the in-memory tree. `_assetIds` (see below) is included so tree consumers
+can tell which nodes reference a given asset without fetching full documents.
 
 Caching is via a **weak ETag**, not `Last-Modified` (despite the `routes.json`
 OpenAPI `meta` still describing `If-Modified-Since`). `treeEtag`

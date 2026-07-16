@@ -45,7 +45,13 @@ async function backfillFriendlyIds (db, log) {
     groups.get(key).docs.push(doc)
   }
 
+  let skipped = 0
   for (const { courseId, type, docs } of groups.values()) {
+    if (!type) {
+      skipped += docs.length
+      log('warn', 'migrations', `Skipping ${docs.length} orphaned content document(s) with no _type: ${docs.map(d => d._id).join(', ')}`)
+      continue
+    }
     if (type === 'config') {
       for (const doc of docs) {
         await content.updateOne({ _id: doc._id }, { $set: { _friendlyId: formatFriendlyId('config') } })
@@ -72,7 +78,7 @@ async function backfillFriendlyIds (db, log) {
       nextSeq++
     }
   }
-  log('info', 'migrations', `Backfilled _friendlyId for ${missing.length} document(s)`)
+  log('info', 'migrations', `Backfilled _friendlyId for ${missing.length - skipped} document(s)${skipped ? ` (${skipped} orphaned document(s) skipped)` : ''}`)
 }
 
 async function backfillAssetIds (db, log) {

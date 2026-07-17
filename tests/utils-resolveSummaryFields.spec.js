@@ -31,7 +31,7 @@ describe('resolveSummaryFields()', () => {
 
   it('ignores an empty override array and falls through', () => {
     const schema = mockSchema({ body: { type: 'string' } })
-    assert.deepEqual(resolveSummaryFields(schema, { body: 'x' }, 'mcq', { mcq: [] }), ['body'])
+    assert.deepEqual(resolveSummaryFields(schema, { body: 'x' }, 'mcq', { mcq: [] }), ['body', 'instruction'])
   })
 
   it('discovers annotated fields and converts paths to selectors', () => {
@@ -53,8 +53,8 @@ describe('resolveSummaryFields()', () => {
     assert.deepEqual(resolveSummaryFields(schema, data, 'custom', {}), ['_items[].text', 'body'])
   })
 
-  it('falls back to body when no override and no annotations', () => {
+  it('falls back to body + instruction when no override and no annotations', () => {
     const schema = mockSchema({ body: { type: 'string' } })
-    assert.deepEqual(resolveSummaryFields(schema, { body: 'x' }, 'unknown', {}), ['body'])
+    assert.deepEqual(resolveSummaryFields(schema, { body: 'x' }, 'unknown', {}), ['body', 'instruction'])
   })
 })

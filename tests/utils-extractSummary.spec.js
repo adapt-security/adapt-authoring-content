@@ -29,7 +29,18 @@ describe('extractSummary()', () => {
     const schema = mockSchema(TEXT)
     assert.deepEqual(
       extractSummary(schema, { body: '<p>Hello</p>' }, 'text', {}),
-      [{ kind: 'text', label: 'body', text: 'Hello' }]
+      [{ kind: 'text', label: 'body', text: 'Hello', field: 'body' }]
+    )
+  })
+
+  it('tags each cell with its source field and defaults to body + instruction', () => {
+    const schema = mockSchema({ body: { type: 'string' }, instruction: { type: 'string' } })
+    assert.deepEqual(
+      extractSummary(schema, { body: 'b', instruction: 'do it' }, undefined, {}),
+      [
+        { kind: 'text', label: 'body', text: 'b', field: 'body' },
+        { kind: 'text', label: 'instruction', text: 'do it', field: 'instruction' }
+      ]
     )
   })
 
@@ -43,7 +54,7 @@ describe('extractSummary()', () => {
     const schema = mockSchema({ _graphic: { properties: { src: { _backboneForms: 'Asset' } } } })
     assert.deepEqual(
       extractSummary(schema, { _graphic: { src: 'img1' } }, 'graphic', { graphic: ['_graphic.src'] }),
-      [{ kind: 'asset', label: 'src', assetId: 'img1' }]
+      [{ kind: 'asset', label: 'src', assetId: 'img1', field: 'src' }]
     )
   })
 

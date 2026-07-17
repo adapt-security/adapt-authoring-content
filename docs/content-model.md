@@ -212,6 +212,38 @@ Two consumers:
   scopes the counts; assets with no usage are omitted. Counting distinct
   `_courseId` (`$addToSet`) means many references within one course count once.
 
+## `_summary`
+
+Each content document carries `_summary`: a display-only array of "cells" that the
+authoring UI renders as a compact second line under the item's title on the course
+structure page. It is computed by `computeSummary` → `extractSummary`
+(`lib/utils/extractSummary.js`) on insert and **recomputed on every update** from the
+full merged document, and stored on the doc (it is never queried, so a plain value
+comparison skips no-op writes). Every type gets one except `config`, which has no
+display card.
+
+The fields summarised are resolved by `resolveSummaryFields`
+(`lib/utils/resolveSummaryFields.js`) with this precedence:
+
+1. **`summaryFields` config override** — an optional map of `_component` name →
+   ordered selectors (`lib/ContentModule.js` reads `getConfig('summaryFields')`).
+2. **Schema annotations** — fields tagged `_adapt.summary` in the built schema,
+   ordered by the optional `_adapt.summary.order`.
+3. **Default** — `['body', 'instruction']`. Containers carry no summary annotations,
+   so they fall through to this; a component without annotations does too.
+
+Each selector becomes one cell via `reduceToCell`
+(`kind` ∈ `text | asset | collection | boolean | number`), carrying the source
+`field` key (its leaf selector segment) so consumers can style a specific field —
+the UI uses `field === 'instruction'` to label the instruction apart from the body.
+Selectors whose value is missing/empty are dropped, so a doc without `instruction`
+simply shows only its body.
+
+Migration `migrations/3.9.0.js` backfills `_summary` on existing **container**
+documents (the default `body`/`instruction` cells). Existing components keep their
+already-correct stored summary and pick up the instruction default on next edit —
+recomputing them would need the schema module, which migrations run without.
+
 ## `_enabledPlugins`
 
 The course `config` document holds `_enabledPlugins` — the list of content

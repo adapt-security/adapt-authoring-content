@@ -211,6 +211,29 @@ Two consumers:
   (`lib/utils/buildAssetUsagePipeline.js`). An optional `assetIds` body array
   scopes the counts; assets with no usage are omitted. Counting distinct
   `_courseId` (`$addToSet`) means many references within one course count once.
+- `GET /api/content/assetusage/:_id` (`handleAssetCourses`): the courses
+  referencing one asset, as `{ _id, title }` rows.
+
+### Deleting a course's assets
+
+A course delete can optionally take its own assets with it. "Its own" means
+assets referenced **only** by that course — anything shared with another course
+is always kept.
+
+- `GET /api/content/course/:_courseId/assets` (`handleCourseAssets` →
+  `getCourseAssets`) previews the split: it collects the course's `_assetIds`,
+  runs `buildAssetUsagePipeline` over them, and partitions with
+  `partitionCourseAssets` (`lib/utils/partitionCourseAssets.js`) into `deletable`
+  (distinct-course count ≤ 1) and `shared` (> 1). Each row carries display
+  metadata; `shared` rows also list the other courses keeping the asset alive
+  (`coursesReferencingAssets`).
+- `DELETE /api/content/course/:_courseId?deleteAssets=true` (`handleCourseDelete`)
+  captures the `deletable` set **before** deleting the course content, runs the
+  normal `delete` cascade, then deletes those assets via `deleteExclusiveAssets`.
+  Deleting content first means the assets module's `enforceAssetNotInUse` guard
+  sees no remaining references; an asset that is nonetheless still referenced (or
+  already gone) is reported in `skippedAssets` rather than failing the delete.
+  Without the flag this behaves as a plain course delete. Requires `write:content`.
 
 ## `_summary`
 

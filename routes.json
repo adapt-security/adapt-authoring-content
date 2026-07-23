@@ -145,6 +145,36 @@
           "responses": { "200": { "description": "Array of { _id, title } for each course referencing the asset" } }
         }
       }
+    },
+    {
+      "route": "/course/:_courseId/assets",
+      "handlers": { "get": "handleCourseAssets" },
+      "permissions": { "get": ["read:${scope}"] },
+      "meta": {
+        "get": {
+          "summary": "Preview the assets that would be affected by deleting a course",
+          "description": "Lists the assets referenced by a course, partitioned into `deletable` (used only by this course, so removable alongside it) and `shared` (referenced by other courses, so kept). Each shared row includes the other courses referencing it. Powers the delete-course confirmation.",
+          "parameters": [{ "name": "_courseId", "in": "path", "description": "The course _id", "required": true }],
+          "responses": { "200": { "description": "Object with `deletable` and `shared` asset arrays" } }
+        }
+      }
+    },
+    {
+      "route": "/course/:_courseId",
+      "modifying": false,
+      "handlers": { "delete": "handleCourseDelete" },
+      "permissions": { "delete": ["write:${scope}"] },
+      "meta": {
+        "delete": {
+          "summary": "Delete a course, optionally deleting the assets used only by it",
+          "description": "Deletes a course and its content tree. When `deleteAssets=true`, assets referenced only by this course are also deleted; assets shared with other courses are always kept.",
+          "parameters": [
+            { "name": "_courseId", "in": "path", "description": "The course _id", "required": true },
+            { "name": "deleteAssets", "in": "query", "description": "Also delete assets used only by this course", "required": false, "schema": { "type": "string", "enum": ["true", "false"], "default": "false" } }
+          ],
+          "responses": { "200": { "description": "Object with the deleted `course`, `deletedAssets` and `skippedAssets` id arrays" } }
+        }
+      }
     }
   ]
 }

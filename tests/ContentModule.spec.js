@@ -1036,4 +1036,55 @@ describe('ContentModule', () => {
       assert.deepEqual(callOrder, ['requestHook', 'clone'], 'requestHook fires before clone')
     })
   })
+
+  describe('insert (course _courseId self-set)', () => {
+    const COURSE_OID = '507f1f77bcf86cd799439011'
+
+    function createCourseInsertInstance (overrides = {}) {
+      const mongoDeleteMany = mock.fn(async () => {})
+      const inst = {
+        schemaName: 'content',
+        collectionName: 'content',
+        mongodb: { deleteMany: mongoDeleteMany },
+        validateParent: mock.fn(async () => {}),
+        generateFriendlyIds: mock.fn(async () => ['course-1']),
+        computeAssetIds: mock.fn(async () => []),
+        computeSummary: mock.fn(async () => []),
+        update: mock.fn(async () => ({ _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID })),
+        app: { errors: {} },
+        ...overrides
+      }
+      return { inst, mongoDeleteMany }
+    }
+
+    // a course is written by super.insert, then a follow-up update self-sets _courseId; the row
+    // must not be left behind if that follow-up throws (otherwise a rolled-back import strands it)
+    it('deletes the orphaned course row when the _courseId self-set update fails', async (t) => {
+      t.mock.method(AbstractApiModule.prototype, 'insert', async () => ({ _id: COURSE_OID, _type: 'course' }))
+      const { inst, mongoDeleteMany } = createCourseInsertInstance({
+        update: mock.fn(async () => { throw new Error('self-set failed') })
+      })
+
+      await assert.rejects(
+        () => ContentModule.prototype.insert.call(inst, { _type: 'course', _friendlyId: 'c-1', _assetIds: [], _summary: [] }),
+        /self-set failed/
+      )
+      assert.equal(mongoDeleteMany.mock.callCount(), 1, 'orphaned row removed exactly once')
+      const [collectionName, query] = mongoDeleteMany.mock.calls[0].arguments
+      assert.equal(collectionName, 'content')
+      assert.deepEqual(query, { _id: COURSE_OID })
+    })
+
+    it('returns the updated course and deletes nothing on success', async (t) => {
+      t.mock.method(AbstractApiModule.prototype, 'insert', async () => ({ _id: COURSE_OID, _type: 'course' }))
+      const updated = { _id: COURSE_OID, _type: 'course', _courseId: COURSE_OID }
+      const { inst, mongoDeleteMany } = createCourseInsertInstance({
+        update: mock.fn(async () => updated)
+      })
+
+      const result = await ContentModule.prototype.insert.call(inst, { _type: 'course', _friendlyId: 'c-1', _assetIds: [], _summary: [] })
+      assert.deepEqual(result, updated)
+      assert.equal(mongoDeleteMany.mock.callCount(), 0, 'no deletion on success')
+    })
+  })
 })
